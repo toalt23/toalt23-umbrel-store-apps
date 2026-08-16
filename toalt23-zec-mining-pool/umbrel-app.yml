@@ -1,7 +1,7 @@
 manifestVersion: 1
-id: sparkles-hello-world
-name: Hello World
-tagline: Replace this tagline with your app's tagline
+id: toalt23-zec-mining-pool   
+name: Zcash Mining Node
+tagline: Zcash Mining Pool with Zebrad full node
 icon: https://svgur.com/i/mvA.svg
 category: Development
 version: "1.0.0"
