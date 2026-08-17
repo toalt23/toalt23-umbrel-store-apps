@@ -2,7 +2,7 @@ manifestVersion: 1
 id: toalt23-zec-mining-pool   
 name: Zcash Mining Node
 tagline: Zcash Mining Pool with Zebrad full node
-icon: https://svgur.com/i/mvA.svg
+icon: https://raw.githubusercontent.com/toalt23/toalt23-umbrel-store-apps/master/toalt23-zec-mining-pool/icon.svg
 category: Development
 version: "1.0.0"
 port: 4000
