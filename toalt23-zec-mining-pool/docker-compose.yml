@@ -20,7 +20,6 @@ services:
 
   zebrad:
     image: zfnd/zebra:latest
-    user: "1000:1000"
     init: true
     environment:
       ZEBRA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
