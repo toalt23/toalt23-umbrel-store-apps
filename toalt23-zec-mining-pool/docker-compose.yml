@@ -4,11 +4,27 @@ services:
 
   app_proxy:
     environment:
-      # The format here is: <app-id>_<docker-service-name>_1
-      APP_HOST: toalt23-zec-mining-pool_server_1
+      APP_HOST: toalt23-zec-mining-pool_web_1
       APP_PORT: 3000
-    
-  server:
-    image: getumbrel/community-app-store-hello-world:latest
+
+  web:
+    build: ./web-ui
     user: "1000:1000"
     init: true
+    environment:
+      ZEBRA_RPC_HOST: toalt23-zec-mining-pool_zebrad_1
+      ZEBRA_RPC_PORT: "8232"
+    restart: on-failure
+    depends_on:
+      - zebrad
+
+  zebrad:
+    image: zfnd/zebra:latest
+    user: "1000:1000"
+    init: true
+    environment:
+      ZEBRA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
+      ZEBRA_RPC__ENABLE_COOKIE_AUTH: "false"
+    volumes:
+      - ${APP_DATA_DIR}/zebrad-cache:/home/zebra/.cache/zebra
+    restart: on-failure

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zcash Mining Node</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f14;
+      color: #eaeaea;
+      display: flex;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+    .card {
+      background: #1a1a22;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #666;
+    }
+    .status-dot.online { background: #4ade80; }
+    .status-dot.offline { background: #f87171; }
+    .progress-bar-bg {
+      background: #2a2a35;
+      border-radius: 8px;
+      height: 24px;
+      overflow: hidden;
+      margin: 16px 0;
+    }
+    .progress-bar-fill {
+      background: linear-gradient(90deg, #cf8724, #fdce58);
+      height: 100%;
+      width: 0%;
+      transition: width 0.5s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #1a1a22;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .stat {
+      background: #22222c;
+      padding: 12px;
+      border-radius: 8px;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      color: #888;
+      text-transform: uppercase;
+    }
+    .stat-value {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .error {
+      color: #f87171;
+      font-size: 0.9rem;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1><span class="status-dot" id="statusDot"></span> Zcash Node</h1>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressBar">0%</div>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Aktuelle Höhe</div>
+        <div class="stat-value" id="currentHeight">–</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Ziel-Höhe</div>
+        <div class="stat-value" id="targetHeight">–</div>
+      </div>
+    </div>
+    <div class="error" id="errorMsg"></div>
+  </div>
+
+  <script>
+    async function updateStatus() {
+      try {
+        const res = await fetch('/api/node/status');
+        const data = await res.json();
+
+        const dot = document.getElementById('statusDot');
+        const bar = document.getElementById('progressBar');
+        const errorEl = document.getElementById('errorMsg');
+
+        if (data.connected) {
+          dot.className = 'status-dot online';
+          const progress = data.syncProgress ?? 0;
+          bar.style.width = progress + '%';
+          bar.textContent = progress + '%';
+          document.getElementById('currentHeight').textContent = data.currentHeight?.toLocaleString() ?? '–';
+          document.getElementById('targetHeight').textContent = data.estimatedHeight?.toLocaleString() ?? '–';
+          errorEl.textContent = '';
+        } else {
+          dot.className = 'status-dot offline';
+          errorEl.textContent = data.error || 'Node nicht erreichbar';
+        }
+      } catch (e) {
+        document.getElementById('statusDot').className = 'status-dot offline';
+        document.getElementById('errorMsg').textContent = 'Verbindung zum Backend fehlgeschlagen';
+      }
+    }
+
+    updateStatus();
+    setInterval(updateStatus, 5000);
+  </script>
+</body>
+</html>
