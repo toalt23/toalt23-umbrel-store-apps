@@ -4,7 +4,7 @@ name: Zcash Mining Node
 tagline: Zcash Mining Pool with Zebrad full node
 icon: https://raw.githubusercontent.com/toalt23/toalt23-umbrel-store-apps/master/toalt23-zec-mining-pool/icon.svg
 category: Development
-version: "1.0.3"
+version: "1.0.4"
 port: 4000
 description: >-
  Zcash Mining Node provides solo-mining directly to your own Node.
@@ -19,7 +19,7 @@ gallery:
   - https://i.imgur.com/yyVG0Jb.jpeg
   - https://i.imgur.com/yyVG0Jb.jpeg
 releaseNotes: >-
-  web polling to node increased to 60 sec
+  remove node peer cache on restart
 dependencies: []
 path: ""
 defaultUsername: ""

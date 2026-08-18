@@ -22,6 +22,12 @@ services:
     image: zfnd/zebra:latest
     init: true
     cpus: "3.0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        rm -f /home/zebra/.cache/zebra/network/mainnet.peers
+        echo "Peer cache cleared. Starting zebrad..."
+        exec zebrad
     environment:
       ZEBRA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
       ZEBRA_RPC__ENABLE_COOKIE_AUTH: "false"
