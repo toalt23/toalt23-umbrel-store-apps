@@ -91,6 +91,12 @@
       font-size: 0.9rem;
       margin-top: 16px;
     }
+    .timer-info {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 16px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -111,9 +117,13 @@
       </div>
     </div>
     <div class="error" id="errorMsg"></div>
+    <div class="timer-info">Nächstes Update in <span id="countdown">60</span>s</div>
   </div>
 
   <script>
+    const UPDATE_INTERVAL = 60000; // 60 Sekunden
+    let timeLeft = UPDATE_INTERVAL / 1000;
+
     async function updateStatus() {
       try {
         const res = await fetch('/api/node/status');
@@ -140,10 +150,22 @@
         document.getElementById('statusDot').className = 'status-dot offline';
         document.getElementById('errorMsg').textContent = 'Verbindung zum Backend fehlgeschlagen';
       }
+
+      // Timer nach erfolgreichem oder fehlgeschlagenem Fetch zurücksetzen
+      timeLeft = UPDATE_INTERVAL / 1000;
     }
 
+    // Sekundlicher Countdown-Ticker
+    setInterval(() => {
+      if (timeLeft > 0) {
+        timeLeft--;
+      }
+      document.getElementById('countdown').textContent = timeLeft;
+    }, 1000);
+
+    // Initialer Start
     updateStatus();
-    setInterval(updateStatus, 10000);
+    setInterval(updateStatus, UPDATE_INTERVAL);
   </script>
 </body>
 </html>
