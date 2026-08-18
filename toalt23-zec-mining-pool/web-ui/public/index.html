@@ -121,8 +121,8 @@
   </div>
 
   <script>
-    const UPDATE_INTERVAL = 60000; // 60 Sekunden
-    let timeLeft = UPDATE_INTERVAL / 1000;
+    const INTERVAL_SECONDS = 60;
+    let timeLeft = INTERVAL_SECONDS;
 
     async function updateStatus() {
       try {
@@ -151,21 +151,23 @@
         document.getElementById('errorMsg').textContent = 'Verbindung zum Backend fehlgeschlagen';
       }
 
-      // Timer nach erfolgreichem oder fehlgeschlagenem Fetch zurücksetzen
-      timeLeft = UPDATE_INTERVAL / 1000;
+      // Timer nach jedem Durchlauf sauber auf den Startwert zurücksetzen
+      timeLeft = INTERVAL_SECONDS;
     }
 
-    // Sekundlicher Countdown-Ticker
+    // Ein einziger zentraler Ticker, der jede Sekunde herunterzählt und bei 0 den Fetch triggert
     setInterval(() => {
-      if (timeLeft > 0) {
+      if (timeLeft > 1) {
         timeLeft--;
+      } else {
+        timeLeft = INTERVAL_SECONDS;
+        updateStatus();
       }
       document.getElementById('countdown').textContent = timeLeft;
     }, 1000);
 
-    // Initialer Start
+    // Initialer Start beim Laden der Seite
     updateStatus();
-    setInterval(updateStatus, UPDATE_INTERVAL);
   </script>
 </body>
 </html>
