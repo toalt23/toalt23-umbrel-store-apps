@@ -21,9 +21,11 @@ services:
   zebrad:
     image: zfnd/zebra:latest
     init: true
+    cpus: "3.0"
     environment:
       ZEBRA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
       ZEBRA_RPC__ENABLE_COOKIE_AUTH: "false"
+      ZEBRA_SYNC__PARALLEL_CPU_THREADS: "2"
     volumes:
       - ${APP_DATA_DIR}/zebrad-cache:/home/zebra/.cache/zebra
     restart: on-failure
