@@ -4,7 +4,7 @@ name: Zcash Mining Node
 tagline: Zcash Mining Pool with Zebrad full node
 icon: https://raw.githubusercontent.com/toalt23/toalt23-umbrel-store-apps/master/toalt23-zec-mining-pool/icon.svg
 category: Development
-version: "1.0.0"
+version: "1.0.1"
 port: 4000
 description: >-
   Add your app's description here.
@@ -23,7 +23,7 @@ gallery:
   - https://i.imgur.com/yyVG0Jb.jpeg
   - https://i.imgur.com/yyVG0Jb.jpeg
 releaseNotes: >-
-  Add what's new in the latest version of your app here.
+  Initial Blockchain Synchronisation optimized
 dependencies: []
 path: ""
 defaultUsername: ""

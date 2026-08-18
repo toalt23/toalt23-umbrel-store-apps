@@ -26,6 +26,7 @@ services:
       ZEBRA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
       ZEBRA_RPC__ENABLE_COOKIE_AUTH: "false"
       ZEBRA_SYNC__PARALLEL_CPU_THREADS: "2"
+      ZEBRA_SYNC__FULL_VERIFY_CONCURRENCY_LIMIT: "1"
     volumes:
       - ${APP_DATA_DIR}/zebrad-cache:/home/zebra/.cache/zebra
     restart: on-failure
