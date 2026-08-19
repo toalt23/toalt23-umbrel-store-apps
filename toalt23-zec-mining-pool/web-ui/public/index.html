@@ -91,12 +91,6 @@
       font-size: 0.9rem;
       margin-top: 16px;
     }
-    .timer-info {
-      font-size: 0.75rem;
-      color: #888;
-      margin-top: 16px;
-      text-align: center;
-    }
   </style>
 </head>
 <body>
@@ -117,12 +111,11 @@
       </div>
     </div>
     <div class="error" id="errorMsg"></div>
-    <div class="timer-info">Nächstes Update in <span id="countdown">60</span>s</div>
   </div>
 
   <script>
-    const INTERVAL_SECONDS = 60;
-    let timeLeft = INTERVAL_SECONDS;
+    let consecutiveFailures = 0;
+    const FAILURE_THRESHOLD = 3;
 
     async function updateStatus() {
       try {
@@ -135,6 +128,7 @@
         const errorEl = document.getElementById('errorMsg');
 
         if (data.connected) {
+          consecutiveFailures = 0;
           dot.className = 'status-dot online';
           const progress = data.syncProgress ?? 0;
           bar.style.width = progress + '%';
@@ -143,31 +137,25 @@
           document.getElementById('targetHeight').textContent = data.estimatedHeight?.toLocaleString() ?? '–';
           errorEl.textContent = '';
         } else {
-          dot.className = 'status-dot offline';
-          errorEl.textContent = data.error || 'Node nicht erreichbar';
+          consecutiveFailures++;
+          if (consecutiveFailures >= FAILURE_THRESHOLD) {
+            dot.className = 'status-dot offline';
+            errorEl.textContent = data.error || 'Node nicht erreichbar';
+          } else {
+            errorEl.textContent = 'Kurzzeitig verzögert …';
+          }
         }
       } catch (e) {
-        document.getElementById('statusDot').className = 'status-dot offline';
-        document.getElementById('errorMsg').textContent = 'Verbindung zum Backend fehlgeschlagen';
+        consecutiveFailures++;
+        if (consecutiveFailures >= FAILURE_THRESHOLD) {
+          document.getElementById('statusDot').className = 'status-dot offline';
+          document.getElementById('errorMsg').textContent = 'Verbindung zum Backend fehlgeschlagen';
+        }
       }
-
-      // Timer nach jedem Durchlauf sauber auf den Startwert zurücksetzen
-      timeLeft = INTERVAL_SECONDS;
     }
 
-    // Ein einziger zentraler Ticker, der jede Sekunde herunterzählt und bei 0 den Fetch triggert
-    setInterval(() => {
-      if (timeLeft > 1) {
-        timeLeft--;
-      } else {
-        timeLeft = INTERVAL_SECONDS;
-        updateStatus();
-      }
-      document.getElementById('countdown').textContent = timeLeft;
-    }, 1000);
-
-    // Initialer Start beim Laden der Seite
     updateStatus();
+    setInterval(updateStatus, 10000);
   </script>
 </body>
 </html>
