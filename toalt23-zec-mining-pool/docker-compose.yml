@@ -12,27 +12,20 @@ services:
     user: "1000:1000"
     init: true
     environment:
-      ZEBRA_RPC_HOST: toalt23-zec-mining-pool_zebrad_1
+      ZEBRA_RPC_HOST: toalt23-zec-mining-pool_zakura_1
       ZEBRA_RPC_PORT: "8232"
     restart: on-failure
     depends_on:
-      - zebrad
+      - zakura
 
-  zebrad:
-    image: zfnd/zebra:latest
+  zakura:
+    image: zakuracore/zakura:latest
     init: true
     cpus: "3.0"
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        rm -f /home/zebra/.cache/zebra/network/mainnet.peers
-        echo "Peer cache cleared. Starting zebrad..."
-        exec zebrad
     environment:
-      ZEBRA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
-      ZEBRA_RPC__ENABLE_COOKIE_AUTH: "false"
-      ZEBRA_SYNC__PARALLEL_CPU_THREADS: "2"
-      ZEBRA_SYNC__FULL_VERIFY_CONCURRENCY_LIMIT: "1"
+      ZAKURA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
+      ZAKURA_RPC__ENABLE_COOKIE_AUTH: "false"
+      ZAKURA_SYNC__PARALLEL_CPU_THREADS: "2"
     volumes:
-      - ${APP_DATA_DIR}/zebrad-cache:/home/zebra/.cache/zebra
+      - ${APP_DATA_DIR}/zakura-cache:/home/zebra/.cache/zakura
     restart: on-failure
