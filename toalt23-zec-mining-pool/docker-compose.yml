@@ -25,7 +25,7 @@ services:
     environment:
       ZAKURA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
       ZAKURA_RPC__ENABLE_COOKIE_AUTH: "false"
-      ZAKURA_SYNC__PARALLEL_CPU_THREADS: "2"
+      ZAKURA_SYNC__PARALLEL_CPU_THREADS: "3"
     volumes:
       - ${APP_DATA_DIR}/zakura-cache:/home/zebra/.cache/zakura
     restart: on-failure
