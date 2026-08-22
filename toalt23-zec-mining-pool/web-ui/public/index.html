@@ -102,6 +102,7 @@
       display: flex;
       justify-content: flex-start;
       margin-top: 18px;
+      margin-left: 6px;
       font-size: 0.72rem;
       color: var(--text-dim);
     }
@@ -110,7 +111,7 @@
     .placeholder .big { font-size: 2.64rem; margin-bottom: 10px; }
     .placeholder .sub { font-size: 0.96rem; margin-top: 6px; opacity: 0.7; }
 
-    .boot-state { display: none; text-align: left; padding: 60px 16px; color: var(--text); font-size: 1.1rem; }
+    .boot-state { display: none; text-align: left; padding: 60px 16px 60px 82px; color: var(--text); font-size: 1.35rem; }
     .app.booting .boot-state { display: block; }
     .app.booting .chain-row,
     .app.booting nav.tabs,
@@ -126,10 +127,10 @@
     }
     .powered-by span {
       font-family: 'Yuji Mai', cursive;
-      font-size: 1.1rem;
+      font-size: 0.85rem;
       color: var(--text-dim);
     }
-    .powered-by img { height: 18px; width: auto; display: block; }
+    .powered-by img { height: 28px; width: auto; display: block; }
   </style>
 </head>
 <body>
@@ -156,7 +157,7 @@
     </header>
 
     <div class="boot-state" id="bootState">
-      Node startet und wird konfiguriert<span id="bootDots">.</span>
+      Node startet und wird konfiguriert <span id="bootDots">.</span>
     </div>
 
     <nav class="tabs">

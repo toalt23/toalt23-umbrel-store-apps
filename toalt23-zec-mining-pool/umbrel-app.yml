@@ -4,7 +4,7 @@ name: ZEC Mining Node
 tagline: ZEC Mining Pool with Zakura full node
 icon: https://raw.githubusercontent.com/toalt23/toalt23-umbrel-store-apps/master/toalt23-zec-mining-pool/icon.svg
 category: Development
-version: "1.1.1"
+version: "1.1.2"
 port: 3000
 description: >-
  ZEC Mining Node provides solo-mining directly to your own Node.
@@ -19,8 +19,8 @@ gallery:
   - https://i.imgur.com/yyVG0Jb.jpeg
   - https://i.imgur.com/yyVG0Jb.jpeg
 releaseNotes: >-
-  UI polish pass: equal-height tiles, bigger logo/text, cleaner boot
-  animation, "Powered by Zakura" branding footer
+  minor spacing/sizing tweaks: boot text aligned with title, footer
+  and branding footer resized
 dependencies: []
 path: ""
 defaultUsername: ""
