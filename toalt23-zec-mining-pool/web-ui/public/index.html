@@ -36,11 +36,11 @@
       gap: 12px;
       margin-bottom: 20px;
     }
-    .logo { width: 46px; height: 46px; flex-shrink: 0; }
+    .logo { width: 56px; height: 56px; flex-shrink: 0; }
     .title { display: flex; flex-direction: column; }
-    .title h1 { font-size: 1.5rem; margin: 0; font-weight: 700; }
+    .title h1 { font-size: 1.8rem; margin: 0; font-weight: 700; }
     .chain-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
-    .chain-row span:first-child { font-size: 0.75rem; color: var(--text-dim); }
+    .chain-row span:first-child { font-size: 0.9rem; color: var(--text-dim); }
     .chain-row span:first-child.offline { color: var(--red); }
     .status-dot {
       width: 8px;
@@ -67,7 +67,7 @@
       color: var(--text-dim);
       padding: 9px 12px;
       border-radius: 8px;
-      font-size: 0.85rem;
+      font-size: 1.02rem;
       font-weight: 600;
       cursor: pointer;
       font-family: inherit;
@@ -88,27 +88,33 @@
     }
     .stat { background: var(--card-alt); padding: 12px; border-radius: 10px; }
     .stat.hidden { display: none; }
-    .stat-label { font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-    .stat-value { font-size: 1.02rem; font-weight: 600; margin-top: 4px; word-break: break-word; }
+    .stat-label { font-size: 0.82rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+    .stat-value { font-size: 1.22rem; font-weight: 600; margin-top: 4px; word-break: break-word; }
     .stat-value.synced { color: var(--green); }
     .stat-value.syncing { color: var(--amber); }
-    .stat-sub { font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; }
+    .stat-sub { font-size: 0.82rem; color: var(--text-dim); margin-top: 2px; }
 
     .footer-row {
       display: flex;
       justify-content: space-between;
       margin-top: 18px;
-      font-size: 0.7rem;
+      font-size: 0.84rem;
       color: var(--text-dim);
     }
 
     .placeholder { text-align: center; padding: 44px 16px; color: var(--text-dim); }
-    .placeholder .big { font-size: 2.2rem; margin-bottom: 10px; }
-    .placeholder .sub { font-size: 0.8rem; margin-top: 6px; opacity: 0.7; }
+    .placeholder .big { font-size: 2.64rem; margin-bottom: 10px; }
+    .placeholder .sub { font-size: 0.96rem; margin-top: 6px; opacity: 0.7; }
+
+    .boot-state { display: none; text-align: center; padding: 60px 16px; color: var(--text); font-size: 1.1rem; }
+    .app.booting .boot-state { display: block; }
+    .app.booting .chain-row,
+    .app.booting nav.tabs,
+    .app.booting .card { display: none; }
   </style>
 </head>
 <body>
-  <div class="app">
+  <div class="app booting">
     <header>
       <svg class="logo" viewBox="0 0 2500 2500" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -130,6 +136,10 @@
       </div>
     </header>
 
+    <div class="boot-state" id="bootState">
+      Node startet und wird konfiguriert<span id="bootDots">.</span>
+    </div>
+
     <nav class="tabs">
       <button class="active" data-tab="node">Node</button>
       <button data-tab="miner">Miner</button>
@@ -143,12 +153,11 @@
           <div class="stat-value" id="syncStatus">–</div>
           <div class="stat-sub" id="syncSub"></div>
         </div>
-        <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="difficulty">–</div></div>
         <div class="stat hidden" id="hashrateStat"><div class="stat-label">Netzwerk-Hashrate</div><div class="stat-value" id="hashrate">–</div></div>
-        <div class="stat hidden" id="peersStat"><div class="stat-label">Peers</div><div class="stat-value" id="peers">–</div></div>
+        <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="difficulty">–</div></div>
         <div class="stat hidden" id="priceStat"><div class="stat-label">ZEC-Preis</div><div class="stat-value" id="price">–</div></div>
         <div class="stat hidden" id="rewardStat"><div class="stat-label">Blockbelohnung</div><div class="stat-value" id="reward">–</div></div>
-        <div class="stat hidden" id="upgradeStat"><div class="stat-label">Network Upgrade</div><div class="stat-value" id="upgrade">–</div></div>
+        <div class="stat hidden" id="peersStat"><div class="stat-label">Peers</div><div class="stat-value" id="peers">–</div></div>
         <div class="stat hidden" id="diskStat"><div class="stat-label">Chain-Größe</div><div class="stat-value" id="disk">–</div></div>
         <div class="stat hidden" id="versionStat"><div class="stat-label">Node-Version</div><div class="stat-value" id="version">–</div></div>
       </div>
@@ -179,6 +188,14 @@
 
     let consecutiveFailures = 0;
     const FAILURE_THRESHOLD = 3;
+
+    let hasConnectedOnce = false;
+    let bootDotCount = 0;
+    const bootTimer = setInterval(() => {
+      bootDotCount = (bootDotCount % 3) + 1;
+      const el = document.getElementById('bootDots');
+      if (el) el.textContent = '.'.repeat(bootDotCount);
+    }, 500);
 
     function formatSolps(v) {
       if (v == null) return null;
@@ -240,6 +257,12 @@
           dot.className = 'status-dot online';
           chainLabel.classList.remove('offline');
 
+          if (!hasConnectedOnce) {
+            hasConnectedOnce = true;
+            clearInterval(bootTimer);
+            document.querySelector('.app').classList.remove('booting');
+          }
+
           chainLabel.textContent =
             data.chain === 'main' ? 'Mainnet' : (data.chain === 'test' ? 'Testnet' : (data.chain ?? '–'));
           document.getElementById('currentHeight').textContent =
@@ -274,7 +297,6 @@
               ? BLOCK_REWARD_ZEC.toFixed(2) + ' ZEC · ' + formatEur(BLOCK_REWARD_ZEC * data.zecEurPrice)
               : null,
           );
-          setStat('upgrade', 'upgradeStat', data.networkUpgrade);
           setStat('disk', 'diskStat', formatBytes(data.sizeOnDiskBytes));
           setStat('version', 'versionStat', data.version ? data.version.replace(/^\/+|\/+$/g, '') : null);
 
