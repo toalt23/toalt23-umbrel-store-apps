@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ZEC Mining Node</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Yuji+Mai&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #0f0f14;
@@ -36,7 +39,7 @@
       gap: 12px;
       margin-bottom: 20px;
     }
-    .logo { width: 56px; height: 56px; flex-shrink: 0; }
+    .logo { width: 70px; height: 70px; flex-shrink: 0; }
     .title { display: flex; flex-direction: column; }
     .title h1 { font-size: 1.8rem; margin: 0; font-weight: 700; }
     .chain-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
@@ -48,6 +51,7 @@
       border-radius: 50%;
       background: #666;
       flex-shrink: 0;
+      margin-top: 2px;
     }
     .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
     .status-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); }
@@ -86,7 +90,7 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
-    .stat { background: var(--card-alt); padding: 12px; border-radius: 10px; }
+    .stat { background: var(--card-alt); padding: 12px; border-radius: 10px; min-height: 90px; }
     .stat.hidden { display: none; }
     .stat-label { font-size: 0.82rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
     .stat-value { font-size: 1.22rem; font-weight: 600; margin-top: 4px; word-break: break-word; }
@@ -96,9 +100,9 @@
 
     .footer-row {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       margin-top: 18px;
-      font-size: 0.84rem;
+      font-size: 0.72rem;
       color: var(--text-dim);
     }
 
@@ -106,11 +110,26 @@
     .placeholder .big { font-size: 2.64rem; margin-bottom: 10px; }
     .placeholder .sub { font-size: 0.96rem; margin-top: 6px; opacity: 0.7; }
 
-    .boot-state { display: none; text-align: center; padding: 60px 16px; color: var(--text); font-size: 1.1rem; }
+    .boot-state { display: none; text-align: left; padding: 60px 16px; color: var(--text); font-size: 1.1rem; }
     .app.booting .boot-state { display: block; }
     .app.booting .chain-row,
     .app.booting nav.tabs,
-    .app.booting .card { display: none; }
+    .app.booting .card,
+    .app.booting .powered-by { display: none; }
+
+    .powered-by {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 14px;
+    }
+    .powered-by span {
+      font-family: 'Yuji Mai', cursive;
+      font-size: 1.1rem;
+      color: var(--text-dim);
+    }
+    .powered-by img { height: 18px; width: auto; display: block; }
   </style>
 </head>
 <body>
@@ -174,6 +193,11 @@
         <div class="sub">Stratum-Server ist in Vorbereitung.</div>
       </div>
     </section>
+
+    <div class="powered-by">
+      <span>Powered by</span>
+      <img src="/zakura-logo.png" alt="Zakura">
+    </div>
   </div>
 
   <script>
@@ -192,7 +216,7 @@
     let hasConnectedOnce = false;
     let bootDotCount = 0;
     const bootTimer = setInterval(() => {
-      bootDotCount = (bootDotCount % 3) + 1;
+      bootDotCount = (bootDotCount + 1) % 4;
       const el = document.getElementById('bootDots');
       if (el) el.textContent = '.'.repeat(bootDotCount);
     }, 500);
@@ -274,7 +298,7 @@
           if (data.synced) {
             syncEl.textContent = '100%';
             syncEl.className = 'stat-value synced';
-            syncSub.textContent = 'Aktuell';
+            syncSub.textContent = '';
           } else {
             const pct = data.syncProgress ?? 0;
             syncEl.textContent = pct.toFixed(2) + '%';
@@ -294,14 +318,18 @@
             'reward',
             'rewardStat',
             data.zecEurPrice != null
-              ? BLOCK_REWARD_ZEC.toFixed(2) + ' ZEC · ' + formatEur(BLOCK_REWARD_ZEC * data.zecEurPrice)
+              ? BLOCK_REWARD_ZEC.toFixed(2) + ' ZEC | ' + formatEur(BLOCK_REWARD_ZEC * data.zecEurPrice)
               : null,
           );
           setStat('disk', 'diskStat', formatBytes(data.sizeOnDiskBytes));
-          setStat('version', 'versionStat', data.version ? data.version.replace(/^\/+|\/+$/g, '') : null);
+          setStat(
+            'version',
+            'versionStat',
+            data.version ? data.version.replace(/^\/+|\/+$/g, '').replace(':', ': ') : null,
+          );
 
           document.getElementById('lastUpdate').textContent =
-            'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+            'Letztes Update: ' + new Date().toLocaleTimeString('de-DE');
         } else {
           consecutiveFailures++;
           if (consecutiveFailures >= FAILURE_THRESHOLD) {
