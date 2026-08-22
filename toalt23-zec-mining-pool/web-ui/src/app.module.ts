@@ -3,7 +3,6 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { NodeModule } from './node/node.module';
 
-
 @Module({
   imports: [
     NodeModule,
