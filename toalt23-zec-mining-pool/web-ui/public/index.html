@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -111,7 +111,7 @@
     .placeholder .big { font-size: 2.64rem; margin-bottom: 10px; }
     .placeholder .sub { font-size: 0.96rem; margin-top: 6px; opacity: 0.7; }
 
-    .boot-state { display: none; text-align: left; padding: 60px 16px 60px 82px; color: var(--text); font-size: 1.35rem; }
+    .boot-state { display: none; text-align: left; padding: 60px 16px 60px 35px; color: var(--text); font-size: 1.35rem; }
     .app.booting .boot-state { display: block; }
     .app.booting .chain-row,
     .app.booting nav.tabs,
@@ -157,7 +157,7 @@
     </header>
 
     <div class="boot-state" id="bootState">
-      Node startet und wird konfiguriert <span id="bootDots">.</span>
+      Connecting to node <span id="bootDots">.</span>
     </div>
 
     <nav class="tabs">
@@ -167,19 +167,19 @@
 
     <section id="tab-node" class="card">
       <div class="stats">
-        <div class="stat"><div class="stat-label">Blockhöhe</div><div class="stat-value" id="currentHeight">–</div></div>
+        <div class="stat"><div class="stat-label">Block Height</div><div class="stat-value" id="currentHeight">–</div></div>
         <div class="stat hidden" id="syncStat">
-          <div class="stat-label">Sync-Status</div>
+          <div class="stat-label">Sync Status</div>
           <div class="stat-value" id="syncStatus">–</div>
           <div class="stat-sub" id="syncSub"></div>
         </div>
-        <div class="stat hidden" id="hashrateStat"><div class="stat-label">Netzwerk-Hashrate</div><div class="stat-value" id="hashrate">–</div></div>
+        <div class="stat hidden" id="hashrateStat"><div class="stat-label">Network Hashrate</div><div class="stat-value" id="hashrate">–</div></div>
         <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="difficulty">–</div></div>
-        <div class="stat hidden" id="priceStat"><div class="stat-label">ZEC-Preis</div><div class="stat-value" id="price">–</div></div>
-        <div class="stat hidden" id="rewardStat"><div class="stat-label">Blockbelohnung</div><div class="stat-value" id="reward">–</div></div>
+        <div class="stat hidden" id="priceStat"><div class="stat-label">ZEC Price</div><div class="stat-value" id="price">–</div></div>
+        <div class="stat hidden" id="rewardStat"><div class="stat-label">Block Reward</div><div class="stat-value" id="reward">–</div></div>
         <div class="stat hidden" id="peersStat"><div class="stat-label">Peers</div><div class="stat-value" id="peers">–</div></div>
-        <div class="stat hidden" id="diskStat"><div class="stat-label">Chain-Größe</div><div class="stat-value" id="disk">–</div></div>
-        <div class="stat hidden" id="versionStat"><div class="stat-label">Node-Version</div><div class="stat-value" id="version">–</div></div>
+        <div class="stat hidden" id="diskStat"><div class="stat-label">Chain Size</div><div class="stat-value" id="disk">–</div></div>
+        <div class="stat hidden" id="versionStat"><div class="stat-label">Node Version</div><div class="stat-value" id="version">–</div></div>
       </div>
 
       <div class="footer-row">
@@ -190,8 +190,8 @@
     <section id="tab-miner" class="card" style="display:none">
       <div class="placeholder">
         <div class="big">⛏️</div>
-        <div>Miner- &amp; Pool-Statistiken folgen hier bald.</div>
-        <div class="sub">Stratum-Server ist in Vorbereitung.</div>
+        <div>Miner &amp; pool stats coming soon.</div>
+        <div class="sub">Stratum server in progress.</div>
       </div>
     </section>
 
@@ -219,7 +219,7 @@
     const bootTimer = setInterval(() => {
       bootDotCount = (bootDotCount + 1) % 4;
       const el = document.getElementById('bootDots');
-      if (el) el.textContent = '.'.repeat(bootDotCount);
+      if (el) el.textContent = Array(bootDotCount).fill('.').join(' ');
     }, 500);
 
     function formatSolps(v) {
@@ -249,11 +249,11 @@
 
     const BLOCK_REWARD_ZEC = 1.25;
 
-    function formatEur(v) {
+    function formatUsd(v) {
       if (v == null) return null;
-      return v.toLocaleString('de-DE', {
+      return v.toLocaleString('en-US', {
         style: 'currency',
-        currency: 'EUR',
+        currency: 'USD',
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
@@ -291,7 +291,7 @@
           chainLabel.textContent =
             data.chain === 'main' ? 'Mainnet' : (data.chain === 'test' ? 'Testnet' : (data.chain ?? '–'));
           document.getElementById('currentHeight').textContent =
-            data.currentHeight != null ? data.currentHeight.toLocaleString('de-DE') : '–';
+            data.currentHeight != null ? data.currentHeight.toLocaleString('en-US') : '–';
 
           document.getElementById('syncStat').classList.remove('hidden');
           const syncEl = document.getElementById('syncStatus');
@@ -305,8 +305,8 @@
             syncEl.textContent = pct.toFixed(2) + '%';
             syncEl.className = 'stat-value syncing';
             syncSub.textContent = data.estimatedHeight
-              ? 'Ziel: ' + data.estimatedHeight.toLocaleString('de-DE')
-              : 'Synchronisiert …';
+              ? 'Target: ' + data.estimatedHeight.toLocaleString('en-US')
+              : 'Syncing …';
           }
 
           document.getElementById('difficulty').textContent =
@@ -314,12 +314,12 @@
 
           setStat('hashrate', 'hashrateStat', formatSolps(data.networkSolps));
           setStat('peers', 'peersStat', data.peers != null ? String(data.peers) : null);
-          setStat('price', 'priceStat', formatEur(data.zecEurPrice));
+          setStat('price', 'priceStat', formatUsd(data.zecUsdPrice));
           setStat(
             'reward',
             'rewardStat',
-            data.zecEurPrice != null
-              ? BLOCK_REWARD_ZEC.toFixed(2) + ' ZEC | ' + formatEur(BLOCK_REWARD_ZEC * data.zecEurPrice)
+            data.zecUsdPrice != null
+              ? BLOCK_REWARD_ZEC.toFixed(2) + ' ZEC | ' + formatUsd(BLOCK_REWARD_ZEC * data.zecUsdPrice)
               : null,
           );
           setStat('disk', 'diskStat', formatBytes(data.sizeOnDiskBytes));
@@ -330,7 +330,7 @@
           );
 
           document.getElementById('lastUpdate').textContent =
-            'Letztes Update: ' + new Date().toLocaleTimeString('de-DE');
+            'Last update: ' + new Date().toLocaleTimeString('en-US');
         } else {
           consecutiveFailures++;
           if (consecutiveFailures >= FAILURE_THRESHOLD) {

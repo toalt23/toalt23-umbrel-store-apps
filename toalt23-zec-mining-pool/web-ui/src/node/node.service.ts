@@ -46,7 +46,7 @@ export interface NodeStatus {
   version?: string;
   networkUpgrade?: string;
   sizeOnDiskBytes?: number;
-  zecEurPrice?: number;
+  zecUsdPrice?: number;
   updatedAt?: string;
   error?: string;
 }
@@ -95,14 +95,14 @@ export class NodeService {
       this.logger.warn(`Could not reach node: ${message}`);
       return {
         connected: false,
-        error: 'Node nicht erreichbar oder startet noch',
+        error: 'Node unreachable or still starting up',
       };
     }
 
     // Optional extras. Not every zcashd-compat layer implements these RPCs,
     // and the price feed is an external API — each one degrades independently
     // so a single failure doesn't break the whole status.
-    const [miningInfo, networkInfo, zecEurPrice] = await Promise.all([
+    const [miningInfo, networkInfo, zecUsdPrice] = await Promise.all([
       this.rpc<MiningInfo>('getmininginfo').catch((error) => {
         this.logger.debug(
           `getmininginfo unavailable: ${error instanceof Error ? error.message : error}`,
@@ -115,7 +115,7 @@ export class NodeService {
         );
         return null;
       }),
-      this.priceService.getZecEurPrice(),
+      this.priceService.getZecUsdPrice(),
     ]);
 
     const syncProgress = Math.min(
@@ -141,7 +141,7 @@ export class NodeService {
       version: networkInfo?.subversion,
       networkUpgrade,
       sizeOnDiskBytes: chainInfo.size_on_disk,
-      zecEurPrice,
+      zecUsdPrice,
       updatedAt: new Date().toISOString(),
     };
   }
