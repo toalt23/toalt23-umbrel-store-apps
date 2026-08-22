@@ -36,16 +36,17 @@
       gap: 12px;
       margin-bottom: 20px;
     }
-    .logo { width: 34px; height: 34px; flex-shrink: 0; }
+    .logo { width: 46px; height: 46px; flex-shrink: 0; }
     .title { display: flex; flex-direction: column; }
-    .title h1 { font-size: 1.15rem; margin: 0; font-weight: 700; }
-    .title span { font-size: 0.75rem; color: var(--text-dim); }
+    .title h1 { font-size: 1.5rem; margin: 0; font-weight: 700; }
+    .chain-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+    .chain-row span:first-child { font-size: 0.75rem; color: var(--text-dim); }
+    .chain-row span:first-child.offline { color: var(--red); }
     .status-dot {
-      width: 9px;
-      height: 9px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       background: #666;
-      margin-left: auto;
       flex-shrink: 0;
     }
     .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
@@ -80,34 +81,18 @@
       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     }
 
-    .sync-row {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-    }
-    .height { font-size: 2.1rem; font-weight: 700; line-height: 1.1; }
-    .height-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
-    .sync-pill {
-      font-size: 0.85rem;
-      font-weight: 700;
-      padding: 5px 12px;
-      border-radius: 999px;
-      white-space: nowrap;
-    }
-    .sync-pill.synced { background: rgba(74,222,128,0.15); color: var(--green); }
-    .sync-pill.syncing { background: rgba(251,191,36,0.15); color: var(--amber); }
-    .sync-detail { font-size: 0.8rem; color: var(--text-dim); margin-top: 6px; }
-
     .stats {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
-      margin-top: 22px;
     }
     .stat { background: var(--card-alt); padding: 12px; border-radius: 10px; }
     .stat.hidden { display: none; }
     .stat-label { font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
     .stat-value { font-size: 1.02rem; font-weight: 600; margin-top: 4px; word-break: break-word; }
+    .stat-value.synced { color: var(--green); }
+    .stat-value.syncing { color: var(--amber); }
+    .stat-sub { font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; }
 
     .footer-row {
       display: flex;
@@ -116,7 +101,6 @@
       font-size: 0.7rem;
       color: var(--text-dim);
     }
-    .error { color: var(--red); font-size: 0.85rem; margin-top: 14px; }
 
     .placeholder { text-align: center; padding: 44px 16px; color: var(--text-dim); }
     .placeholder .big { font-size: 2.2rem; margin-bottom: 10px; }
@@ -134,14 +118,16 @@
           </linearGradient>
         </defs>
         <path fill="url(#zGrad)" d="M1263.05,2297.61c-569.6,0-1034.57-465.43-1034.57-1034.56,0-569.6,465.44-1034.57,1034.57-1034.57,569.6,0,1034.56,465.44,1034.56,1034.57C2297.61,1832.65,1832.65,2297.61,1263.05,2297.61Z"/>
-        <path fill="url(#zGrad)" d="M1250,2500C562.5,2500,0,1937.5,0,1250S562.5,0,1250,0,2500,562.5,2500,1250,1937.5,2500,1250,2500Zm0-2222.06c-534.56,0-972.06,437.5-972.06,972.06s437.5,972.06,972.06,972.06,972.06-437.5,972.06-972.06S1784.56,277.94,1250,277.94Z"/>
-        <path fill="url(#zGrad)" d="M1221.05,1588.59h541.67v270.84h-319.6v229.16H1165.18V1866.53H831.85c0-90.44-13.73-180.4,7.1-263.73,7.1-41.67,55.4-83.34,90.43-125,104.17-125,208.34-250,319.61-375,41.66-48.77,83.33-90.44,132.1-145.83H860.26V686.13h305.39V457h270.84V679h333.33c0,90.43,13.73,180.4-7.1,263.73-7.1,41.67-55.4,83.33-90.44,125-104.16,125-208.33,250-319.6,375C1311,1491.53,1269.35,1539.82,1221.05,1588.59Z"/>
+        <path fill="#0f0f14" d="M1250,2500C562.5,2500,0,1937.5,0,1250S562.5,0,1250,0,2500,562.5,2500,1250,1937.5,2500,1250,2500Zm0-2222.06c-534.56,0-972.06,437.5-972.06,972.06s437.5,972.06,972.06,972.06,972.06-437.5,972.06-972.06S1784.56,277.94,1250,277.94Z"/>
+        <path fill="#0f0f14" d="M1221.05,1588.59h541.67v270.84h-319.6v229.16H1165.18V1866.53H831.85c0-90.44-13.73-180.4,7.1-263.73,7.1-41.67,55.4-83.34,90.43-125,104.17-125,208.34-250,319.61-375,41.66-48.77,83.33-90.44,132.1-145.83H860.26V686.13h305.39V457h270.84V679h333.33c0,90.43,13.73,180.4-7.1,263.73-7.1,41.67-55.4,83.33-90.44,125-104.16,125-208.33,250-319.6,375C1311,1491.53,1269.35,1539.82,1221.05,1588.59Z"/>
       </svg>
       <div class="title">
         <h1>ZEC Mining Node</h1>
-        <span id="chainLabel">–</span>
+        <div class="chain-row">
+          <span id="chainLabel">–</span>
+          <span class="status-dot" id="statusDot"></span>
+        </div>
       </div>
-      <span class="status-dot" id="statusDot"></span>
     </header>
 
     <nav class="tabs">
@@ -150,19 +136,18 @@
     </nav>
 
     <section id="tab-node" class="card">
-      <div class="sync-row">
-        <div>
-          <div class="height" id="currentHeight">–</div>
-          <div class="height-label">Blockhöhe</div>
-        </div>
-        <div class="sync-pill" id="syncPill">–</div>
-      </div>
-      <div class="sync-detail" id="syncDetail"></div>
-
       <div class="stats">
+        <div class="stat"><div class="stat-label">Blockhöhe</div><div class="stat-value" id="currentHeight">–</div></div>
+        <div class="stat hidden" id="syncStat">
+          <div class="stat-label">Sync-Status</div>
+          <div class="stat-value" id="syncStatus">–</div>
+          <div class="stat-sub" id="syncSub"></div>
+        </div>
         <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="difficulty">–</div></div>
         <div class="stat hidden" id="hashrateStat"><div class="stat-label">Netzwerk-Hashrate</div><div class="stat-value" id="hashrate">–</div></div>
         <div class="stat hidden" id="peersStat"><div class="stat-label">Peers</div><div class="stat-value" id="peers">–</div></div>
+        <div class="stat hidden" id="priceStat"><div class="stat-label">ZEC-Preis</div><div class="stat-value" id="price">–</div></div>
+        <div class="stat hidden" id="rewardStat"><div class="stat-label">Blockbelohnung</div><div class="stat-value" id="reward">–</div></div>
         <div class="stat hidden" id="upgradeStat"><div class="stat-label">Network Upgrade</div><div class="stat-value" id="upgrade">–</div></div>
         <div class="stat hidden" id="diskStat"><div class="stat-label">Chain-Größe</div><div class="stat-value" id="disk">–</div></div>
         <div class="stat hidden" id="versionStat"><div class="stat-label">Node-Version</div><div class="stat-value" id="version">–</div></div>
@@ -170,9 +155,7 @@
 
       <div class="footer-row">
         <span id="lastUpdate">–</span>
-        <span id="targetHeight"></span>
       </div>
-      <div class="error" id="errorMsg"></div>
     </section>
 
     <section id="tab-miner" class="card" style="display:none">
@@ -205,6 +188,14 @@
       return v.toFixed(2) + ' ' + units[i];
     }
 
+    function formatShortNumber(v) {
+      if (v == null) return null;
+      const units = ['', 'K', 'M', 'G', 'T'];
+      let i = 0;
+      while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
+      return v.toFixed(2) + (units[i] ? ' ' + units[i] : '');
+    }
+
     function formatBytes(bytes) {
       if (bytes == null) return null;
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -212,6 +203,18 @@
       let v = bytes;
       while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
       return v.toFixed(1) + ' ' + units[i];
+    }
+
+    const BLOCK_REWARD_ZEC = 1.25;
+
+    function formatEur(v) {
+      if (v == null) return null;
+      return v.toLocaleString('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
     }
 
     function setStat(valueId, wrapperId, value) {
@@ -230,43 +233,50 @@
         const data = await res.json();
 
         const dot = document.getElementById('statusDot');
-        const errorEl = document.getElementById('errorMsg');
+        const chainLabel = document.getElementById('chainLabel');
 
         if (data.connected) {
           consecutiveFailures = 0;
           dot.className = 'status-dot online';
-          errorEl.textContent = '';
+          chainLabel.classList.remove('offline');
 
-          document.getElementById('chainLabel').textContent =
+          chainLabel.textContent =
             data.chain === 'main' ? 'Mainnet' : (data.chain === 'test' ? 'Testnet' : (data.chain ?? '–'));
           document.getElementById('currentHeight').textContent =
             data.currentHeight != null ? data.currentHeight.toLocaleString('de-DE') : '–';
 
-          const pill = document.getElementById('syncPill');
-          const detail = document.getElementById('syncDetail');
+          document.getElementById('syncStat').classList.remove('hidden');
+          const syncEl = document.getElementById('syncStatus');
+          const syncSub = document.getElementById('syncSub');
           if (data.synced) {
-            pill.textContent = '100%';
-            pill.className = 'sync-pill synced';
-            detail.textContent = 'Node ist aktuell';
+            syncEl.textContent = '100%';
+            syncEl.className = 'stat-value synced';
+            syncSub.textContent = 'Aktuell';
           } else {
             const pct = data.syncProgress ?? 0;
-            pill.textContent = pct.toFixed(2) + '%';
-            pill.className = 'sync-pill syncing';
-            detail.textContent = data.estimatedHeight
-              ? 'Synchronisiert … Ziel: ' + data.estimatedHeight.toLocaleString('de-DE')
+            syncEl.textContent = pct.toFixed(2) + '%';
+            syncEl.className = 'stat-value syncing';
+            syncSub.textContent = data.estimatedHeight
+              ? 'Ziel: ' + data.estimatedHeight.toLocaleString('de-DE')
               : 'Synchronisiert …';
           }
 
           document.getElementById('difficulty').textContent =
-            data.difficulty != null
-              ? Number(data.difficulty).toLocaleString('de-DE', { maximumFractionDigits: 0 })
-              : '–';
+            data.difficulty != null ? formatShortNumber(Number(data.difficulty)) : '–';
 
           setStat('hashrate', 'hashrateStat', formatSolps(data.networkSolps));
           setStat('peers', 'peersStat', data.peers != null ? String(data.peers) : null);
+          setStat('price', 'priceStat', formatEur(data.zecEurPrice));
+          setStat(
+            'reward',
+            'rewardStat',
+            data.zecEurPrice != null
+              ? BLOCK_REWARD_ZEC.toFixed(2) + ' ZEC · ' + formatEur(BLOCK_REWARD_ZEC * data.zecEurPrice)
+              : null,
+          );
           setStat('upgrade', 'upgradeStat', data.networkUpgrade);
           setStat('disk', 'diskStat', formatBytes(data.sizeOnDiskBytes));
-          setStat('version', 'versionStat', data.version);
+          setStat('version', 'versionStat', data.version ? data.version.replace(/^\/+|\/+$/g, '') : null);
 
           document.getElementById('lastUpdate').textContent =
             'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
@@ -274,16 +284,14 @@
           consecutiveFailures++;
           if (consecutiveFailures >= FAILURE_THRESHOLD) {
             dot.className = 'status-dot offline';
-            errorEl.textContent = data.error || 'Node nicht erreichbar';
-          } else {
-            errorEl.textContent = 'Kurzzeitig verzögert …';
+            chainLabel.classList.add('offline');
           }
         }
       } catch (e) {
         consecutiveFailures++;
         if (consecutiveFailures >= FAILURE_THRESHOLD) {
           document.getElementById('statusDot').className = 'status-dot offline';
-          document.getElementById('errorMsg').textContent = 'Verbindung zum Backend fehlgeschlagen';
+          document.getElementById('chainLabel').classList.add('offline');
         }
       }
     }

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+import { PriceService } from '../price/price.service';
 
 interface BlockchainInfo {
   chain: string;
@@ -45,6 +46,7 @@ export interface NodeStatus {
   version?: string;
   networkUpgrade?: string;
   sizeOnDiskBytes?: number;
+  zecEurPrice?: number;
   updatedAt?: string;
   error?: string;
 }
@@ -54,7 +56,7 @@ export class NodeService {
   private readonly logger = new Logger(NodeService.name);
   private readonly rpcUrl: string;
 
-  constructor() {
+  constructor(private readonly priceService: PriceService) {
     const host = process.env.ZEBRA_RPC_HOST || 'zebrad';
     const port = process.env.ZEBRA_RPC_PORT || '8232';
     this.rpcUrl = `http://${host}:${port}`;
@@ -98,8 +100,9 @@ export class NodeService {
     }
 
     // Optional extras. Not every zcashd-compat layer implements these RPCs,
-    // so each one degrades independently instead of failing the whole status.
-    const [miningInfo, networkInfo] = await Promise.all([
+    // and the price feed is an external API — each one degrades independently
+    // so a single failure doesn't break the whole status.
+    const [miningInfo, networkInfo, zecEurPrice] = await Promise.all([
       this.rpc<MiningInfo>('getmininginfo').catch((error) => {
         this.logger.debug(
           `getmininginfo unavailable: ${error instanceof Error ? error.message : error}`,
@@ -112,6 +115,7 @@ export class NodeService {
         );
         return null;
       }),
+      this.priceService.getZecEurPrice(),
     ]);
 
     const syncProgress = Math.min(
@@ -137,6 +141,7 @@ export class NodeService {
       version: networkInfo?.subversion,
       networkUpgrade,
       sizeOnDiskBytes: chainInfo.size_on_disk,
+      zecEurPrice,
       updatedAt: new Date().toISOString(),
     };
   }
