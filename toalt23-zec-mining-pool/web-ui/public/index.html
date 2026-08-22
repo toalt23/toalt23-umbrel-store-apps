@@ -3,119 +3,226 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zcash Mining Node</title>
+  <title>ZEC Mining Node</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>
+    :root {
+      --bg: #0f0f14;
+      --card: #1a1a22;
+      --card-alt: #22222c;
+      --text: #eaeaea;
+      --text-dim: #888;
+      --gold-1: #cf8724;
+      --gold-2: #fdce58;
+      --green: #4ade80;
+      --red: #f87171;
+      --amber: #fbbf24;
+    }
+    * { box-sizing: border-box; }
     body {
+      margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0f0f14;
-      color: #eaeaea;
+      background: var(--bg);
+      color: var(--text);
       display: flex;
       justify-content: center;
-      padding: 40px 20px;
+      padding: 32px 16px;
     }
-    .card {
-      background: #1a1a22;
-      border-radius: 16px;
-      padding: 32px;
-      max-width: 480px;
-      width: 100%;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    }
-    h1 {
-      font-size: 1.4rem;
-      margin-bottom: 24px;
+    .app { max-width: 560px; width: 100%; }
+
+    header {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
+      margin-bottom: 20px;
     }
+    .logo { width: 34px; height: 34px; flex-shrink: 0; }
+    .title { display: flex; flex-direction: column; }
+    .title h1 { font-size: 1.15rem; margin: 0; font-weight: 700; }
+    .title span { font-size: 0.75rem; color: var(--text-dim); }
     .status-dot {
-      width: 10px;
-      height: 10px;
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
       background: #666;
+      margin-left: auto;
+      flex-shrink: 0;
     }
-    .status-dot.online { background: #4ade80; }
-    .status-dot.offline { background: #f87171; }
-    .progress-bar-bg {
-      background: #2a2a35;
-      border-radius: 8px;
-      height: 24px;
-      overflow: hidden;
-      margin: 16px 0;
-      position: relative;
-    }
-    .progress-bar-fill {
-      background: linear-gradient(90deg, #cf8724, #fdce58);
-      height: 100%;
-      width: 0%;
-      transition: width 0.5s ease;
-    }
-    .progress-bar-label {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+    .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .status-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+    nav.tabs {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: #fff;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
-      pointer-events: none;
+      gap: 4px;
+      margin-bottom: 14px;
+      background: var(--card);
+      border-radius: 10px;
+      padding: 4px;
     }
+    nav.tabs button {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    nav.tabs button.active { background: var(--card-alt); color: var(--text); }
+
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .sync-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+    .height { font-size: 2.1rem; font-weight: 700; line-height: 1.1; }
+    .height-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+    .sync-pill {
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .sync-pill.synced { background: rgba(74,222,128,0.15); color: var(--green); }
+    .sync-pill.syncing { background: rgba(251,191,36,0.15); color: var(--amber); }
+    .sync-detail { font-size: 0.8rem; color: var(--text-dim); margin-top: 6px; }
+
     .stats {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 20px;
+      gap: 10px;
+      margin-top: 22px;
     }
-    .stat {
-      background: #22222c;
-      padding: 12px;
-      border-radius: 8px;
+    .stat { background: var(--card-alt); padding: 12px; border-radius: 10px; }
+    .stat.hidden { display: none; }
+    .stat-label { font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+    .stat-value { font-size: 1.02rem; font-weight: 600; margin-top: 4px; word-break: break-word; }
+
+    .footer-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 18px;
+      font-size: 0.7rem;
+      color: var(--text-dim);
     }
-    .stat-label {
-      font-size: 0.75rem;
-      color: #888;
-      text-transform: uppercase;
-    }
-    .stat-value {
-      font-size: 1.1rem;
-      font-weight: 600;
-      margin-top: 4px;
-    }
-    .error {
-      color: #f87171;
-      font-size: 0.9rem;
-      margin-top: 16px;
-    }
+    .error { color: var(--red); font-size: 0.85rem; margin-top: 14px; }
+
+    .placeholder { text-align: center; padding: 44px 16px; color: var(--text-dim); }
+    .placeholder .big { font-size: 2.2rem; margin-bottom: 10px; }
+    .placeholder .sub { font-size: 0.8rem; margin-top: 6px; opacity: 0.7; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1><span class="status-dot" id="statusDot"></span> Zcash Node</h1>
-    <div class="progress-bar-bg">
-      <div class="progress-bar-fill" id="progressBar"></div>
-      <div class="progress-bar-label" id="progressLabel">0%</div>
-    </div>
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-label">Aktuelle Höhe</div>
-        <div class="stat-value" id="currentHeight">–</div>
+  <div class="app">
+    <header>
+      <svg class="logo" viewBox="0 0 2500 2500" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="zGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0" stop-color="#cf8724"/>
+            <stop offset="1" stop-color="#fdce58"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#zGrad)" d="M1263.05,2297.61c-569.6,0-1034.57-465.43-1034.57-1034.56,0-569.6,465.44-1034.57,1034.57-1034.57,569.6,0,1034.56,465.44,1034.56,1034.57C2297.61,1832.65,1832.65,2297.61,1263.05,2297.61Z"/>
+        <path fill="url(#zGrad)" d="M1250,2500C562.5,2500,0,1937.5,0,1250S562.5,0,1250,0,2500,562.5,2500,1250,1937.5,2500,1250,2500Zm0-2222.06c-534.56,0-972.06,437.5-972.06,972.06s437.5,972.06,972.06,972.06,972.06-437.5,972.06-972.06S1784.56,277.94,1250,277.94Z"/>
+        <path fill="url(#zGrad)" d="M1221.05,1588.59h541.67v270.84h-319.6v229.16H1165.18V1866.53H831.85c0-90.44-13.73-180.4,7.1-263.73,7.1-41.67,55.4-83.34,90.43-125,104.17-125,208.34-250,319.61-375,41.66-48.77,83.33-90.44,132.1-145.83H860.26V686.13h305.39V457h270.84V679h333.33c0,90.43,13.73,180.4-7.1,263.73-7.1,41.67-55.4,83.33-90.44,125-104.16,125-208.33,250-319.6,375C1311,1491.53,1269.35,1539.82,1221.05,1588.59Z"/>
+      </svg>
+      <div class="title">
+        <h1>ZEC Mining Node</h1>
+        <span id="chainLabel">–</span>
       </div>
-      <div class="stat">
-        <div class="stat-label">Ziel-Höhe</div>
-        <div class="stat-value" id="targetHeight">–</div>
+      <span class="status-dot" id="statusDot"></span>
+    </header>
+
+    <nav class="tabs">
+      <button class="active" data-tab="node">Node</button>
+      <button data-tab="miner">Miner</button>
+    </nav>
+
+    <section id="tab-node" class="card">
+      <div class="sync-row">
+        <div>
+          <div class="height" id="currentHeight">–</div>
+          <div class="height-label">Blockhöhe</div>
+        </div>
+        <div class="sync-pill" id="syncPill">–</div>
       </div>
-    </div>
-    <div class="error" id="errorMsg"></div>
+      <div class="sync-detail" id="syncDetail"></div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="difficulty">–</div></div>
+        <div class="stat hidden" id="hashrateStat"><div class="stat-label">Netzwerk-Hashrate</div><div class="stat-value" id="hashrate">–</div></div>
+        <div class="stat hidden" id="peersStat"><div class="stat-label">Peers</div><div class="stat-value" id="peers">–</div></div>
+        <div class="stat hidden" id="upgradeStat"><div class="stat-label">Network Upgrade</div><div class="stat-value" id="upgrade">–</div></div>
+        <div class="stat hidden" id="diskStat"><div class="stat-label">Chain-Größe</div><div class="stat-value" id="disk">–</div></div>
+        <div class="stat hidden" id="versionStat"><div class="stat-label">Node-Version</div><div class="stat-value" id="version">–</div></div>
+      </div>
+
+      <div class="footer-row">
+        <span id="lastUpdate">–</span>
+        <span id="targetHeight"></span>
+      </div>
+      <div class="error" id="errorMsg"></div>
+    </section>
+
+    <section id="tab-miner" class="card" style="display:none">
+      <div class="placeholder">
+        <div class="big">⛏️</div>
+        <div>Miner- &amp; Pool-Statistiken folgen hier bald.</div>
+        <div class="sub">Stratum-Server ist in Vorbereitung.</div>
+      </div>
+    </section>
   </div>
 
   <script>
+    document.querySelectorAll('nav.tabs button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav.tabs button').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-node').style.display = btn.dataset.tab === 'node' ? 'block' : 'none';
+        document.getElementById('tab-miner').style.display = btn.dataset.tab === 'miner' ? 'block' : 'none';
+      });
+    });
+
     let consecutiveFailures = 0;
     const FAILURE_THRESHOLD = 3;
+
+    function formatSolps(v) {
+      if (v == null) return null;
+      const units = ['Sol/s', 'kSol/s', 'MSol/s', 'GSol/s'];
+      let i = 0;
+      while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
+      return v.toFixed(2) + ' ' + units[i];
+    }
+
+    function formatBytes(bytes) {
+      if (bytes == null) return null;
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let i = 0;
+      let v = bytes;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      return v.toFixed(1) + ' ' + units[i];
+    }
+
+    function setStat(valueId, wrapperId, value) {
+      const wrapper = document.getElementById(wrapperId);
+      if (value == null || value === '') {
+        wrapper.classList.add('hidden');
+        return;
+      }
+      wrapper.classList.remove('hidden');
+      document.getElementById(valueId).textContent = value;
+    }
 
     async function updateStatus() {
       try {
@@ -123,19 +230,46 @@
         const data = await res.json();
 
         const dot = document.getElementById('statusDot');
-        const bar = document.getElementById('progressBar');
-        const label = document.getElementById('progressLabel');
         const errorEl = document.getElementById('errorMsg');
 
         if (data.connected) {
           consecutiveFailures = 0;
           dot.className = 'status-dot online';
-          const progress = data.syncProgress ?? 0;
-          bar.style.width = progress + '%';
-          label.textContent = progress + '%';
-          document.getElementById('currentHeight').textContent = data.currentHeight?.toLocaleString() ?? '–';
-          document.getElementById('targetHeight').textContent = data.estimatedHeight?.toLocaleString() ?? '–';
           errorEl.textContent = '';
+
+          document.getElementById('chainLabel').textContent =
+            data.chain === 'main' ? 'Mainnet' : (data.chain === 'test' ? 'Testnet' : (data.chain ?? '–'));
+          document.getElementById('currentHeight').textContent =
+            data.currentHeight != null ? data.currentHeight.toLocaleString('de-DE') : '–';
+
+          const pill = document.getElementById('syncPill');
+          const detail = document.getElementById('syncDetail');
+          if (data.synced) {
+            pill.textContent = '100%';
+            pill.className = 'sync-pill synced';
+            detail.textContent = 'Node ist aktuell';
+          } else {
+            const pct = data.syncProgress ?? 0;
+            pill.textContent = pct.toFixed(2) + '%';
+            pill.className = 'sync-pill syncing';
+            detail.textContent = data.estimatedHeight
+              ? 'Synchronisiert … Ziel: ' + data.estimatedHeight.toLocaleString('de-DE')
+              : 'Synchronisiert …';
+          }
+
+          document.getElementById('difficulty').textContent =
+            data.difficulty != null
+              ? Number(data.difficulty).toLocaleString('de-DE', { maximumFractionDigits: 0 })
+              : '–';
+
+          setStat('hashrate', 'hashrateStat', formatSolps(data.networkSolps));
+          setStat('peers', 'peersStat', data.peers != null ? String(data.peers) : null);
+          setStat('upgrade', 'upgradeStat', data.networkUpgrade);
+          setStat('disk', 'diskStat', formatBytes(data.sizeOnDiskBytes));
+          setStat('version', 'versionStat', data.version);
+
+          document.getElementById('lastUpdate').textContent =
+            'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
         } else {
           consecutiveFailures++;
           if (consecutiveFailures >= FAILURE_THRESHOLD) {
