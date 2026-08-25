@@ -72,7 +72,7 @@ export class NodeService {
       this.rpcUrl,
       {
         jsonrpc: '1.0',
-        id: 'web-ui',
+        id: 'app',
         method,
         params,
       },
