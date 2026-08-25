@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { PriceService } from '../price/price.service';
+import { BlockTemplateResult } from '../pool/types';
 
 interface BlockchainInfo {
   chain: string;
@@ -62,7 +63,11 @@ export class NodeService {
     this.rpcUrl = `http://${host}:${port}`;
   }
 
-  private async rpc<T>(method: string, params: unknown[] = []): Promise<T> {
+  private async rpc<T>(
+    method: string,
+    params: unknown[] = [],
+    timeoutMs = 30000,
+  ): Promise<T> {
     const response = await axios.post<JsonRpcResponse<T>>(
       this.rpcUrl,
       {
@@ -73,7 +78,7 @@ export class NodeService {
       },
       {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 30000,
+        timeout: timeoutMs,
       },
     );
 
@@ -84,6 +89,24 @@ export class NodeService {
     }
 
     return response.data.result;
+  }
+
+  /** Fresh block template for the stratum pool — not cached, callers poll on their own cadence. */
+  async getBlockTemplate(): Promise<BlockTemplateResult> {
+    return this.rpc<BlockTemplateResult>('getblocktemplate', [
+      { capabilities: ['coinbasetxn', 'workid', 'coinbase/append'] },
+    ]);
+  }
+
+  /** Returns null on acceptance, or the node's rejection reason string. */
+  async submitBlock(blockHex: string): Promise<string | null> {
+    return this.rpc<string | null>('submitblock', [blockHex]);
+  }
+
+  /** Current network difficulty (relative to powLimit=1) — used to derive the "difficulty 1" target for share accounting. */
+  async getNetworkDifficulty(): Promise<number> {
+    const info = await this.rpc<{ difficulty: number }>('getblockchaininfo');
+    return info.difficulty;
   }
 
   async getStatus(): Promise<NodeStatus> {

@@ -110,6 +110,55 @@
     .placeholder { text-align: center; padding: 44px 16px; color: var(--text-dim); }
     .placeholder .big { font-size: 2.64rem; margin-bottom: 10px; }
     .placeholder .sub { font-size: 0.96rem; margin-top: 6px; opacity: 0.7; }
+    .placeholder.hidden { display: none; }
+    #minerContent.hidden { display: none; }
+
+    .worker-row { background: var(--card-alt); padding: 12px 14px; border-radius: 10px; }
+    .worker-row .worker-name { font-weight: 600; }
+    .worker-row .worker-meta { font-size: 0.82rem; color: var(--text-dim); margin-top: 3px; }
+    .worker-row .worker-best { font-size: 0.78rem; color: var(--gold-2); margin-top: 3px; }
+
+    .best-share-banner {
+      background: var(--card-alt);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-top: 10px;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .best-share-banner .value { color: var(--gold-2); font-weight: 600; }
+    .best-share-banner.hidden { display: none; }
+
+    .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
+    .config-section label { display: block; font-size: 0.82rem; color: var(--text-dim); margin-bottom: 6px; }
+    .config-row { display: flex; gap: 8px; }
+    .config-row input {
+      flex: 1;
+      background: var(--card-alt);
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 9px 10px;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      min-width: 0;
+    }
+    .config-row input:focus { outline: none; border-color: var(--gold-1); }
+    .config-row button {
+      background: var(--gold-1);
+      color: #16130a;
+      border: none;
+      border-radius: 8px;
+      padding: 0 16px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .config-row button:disabled { opacity: 0.6; cursor: default; }
+    .config-msg { font-size: 0.78rem; margin-top: 8px; min-height: 1.1em; }
+    .config-msg.error { color: var(--red); }
+    .config-msg.success { color: var(--green); }
 
     .boot-state { display: none; text-align: left; padding: 60px 16px 60px 35px; color: var(--text); font-size: 1.35rem; }
     .app.booting .boot-state { display: block; }
@@ -188,10 +237,31 @@
     </section>
 
     <section id="tab-miner" class="card" style="display:none">
-      <div class="placeholder">
+      <div class="placeholder hidden" id="minerEmpty">
         <div class="big">⛏️</div>
-        <div>Miner &amp; pool stats coming soon.</div>
-        <div class="sub">Stratum server in progress.</div>
+        <div>No workers connected yet.</div>
+        <div class="sub" id="stratumHint">Point your miner at this node's IP, port –.</div>
+      </div>
+      <div id="minerContent" class="hidden">
+        <div class="stats" style="grid-template-columns: 1fr 1fr 1fr;">
+          <div class="stat"><div class="stat-label">Blocks Found</div><div class="stat-value" id="blocksFound">–</div></div>
+          <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
+          <div class="stat"><div class="stat-label">Verification</div><div class="stat-value" id="verifyStatus">–</div></div>
+        </div>
+        <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
+        <div class="best-share-banner hidden" id="bestShareBanner"></div>
+      </div>
+      <div class="footer-row">
+        <span id="poolLastUpdate">–</span>
+      </div>
+
+      <div class="config-section">
+        <label for="minerAddressInput">Mining payout address (applies to all connected workers)</label>
+        <div class="config-row">
+          <input type="text" id="minerAddressInput" placeholder="t1… / t3… / zs1… / u1…" autocomplete="off" spellcheck="false">
+          <button id="minerAddressSave">Save</button>
+        </div>
+        <div class="config-msg" id="minerAddressMsg"></div>
       </div>
     </section>
 
@@ -347,8 +417,142 @@
       }
     }
 
+    function formatSol(v) {
+      const units = ['Sol/s', 'kSol/s', 'MSol/s'];
+      let i = 0;
+      while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
+      return v.toFixed(2) + ' ' + units[i];
+    }
+
+    function formatDifficulty(d) {
+      if (!d) return '0';
+      return d.toExponential(2);
+    }
+
+    // "Luck" framing: what % of a full network difficulty this share represents —
+    // more intuitive for a solo miner than the raw (tiny) difficulty number.
+    function formatDifficultyPct(shareDiff, networkDiff) {
+      if (!shareDiff || !networkDiff) return null;
+      const pct = (shareDiff / networkDiff) * 100;
+      return pct < 0.01 ? '<0.01%' : pct.toFixed(2) + '%';
+    }
+
+    async function updatePoolStatus() {
+      try {
+        const res = await fetch('/api/pool/status');
+        const data = await res.json();
+
+        document.getElementById('stratumHint').textContent =
+          "Point your miner at this node's IP, port " + data.stratumPort + '.';
+
+        document.getElementById('blocksFound').textContent = String(data.blocksFound);
+        document.getElementById('workerCount').textContent = String(data.connectedWorkers.length);
+        const verifyEl = document.getElementById('verifyStatus');
+        verifyEl.textContent = data.equihashVerifyAvailable ? 'Active' : 'Unavailable';
+        verifyEl.className = 'stat-value ' + (data.equihashVerifyAvailable ? 'synced' : 'syncing');
+
+        const empty = document.getElementById('minerEmpty');
+        const content = document.getElementById('minerContent');
+        if (data.connectedWorkers.length === 0) {
+          empty.classList.remove('hidden');
+          content.classList.add('hidden');
+        } else {
+          empty.classList.add('hidden');
+          content.classList.remove('hidden');
+          const list = document.getElementById('workerList');
+          list.innerHTML = '';
+          data.connectedWorkers.forEach((w) => {
+            const bestPct = formatDifficultyPct(w.bestShareDifficulty, data.networkDifficulty);
+            const row = document.createElement('div');
+            row.className = 'worker-row';
+            row.innerHTML =
+              '<div class="worker-name">' + w.workerName + '</div>' +
+              '<div class="worker-meta">' +
+                formatSol(w.estimatedHashrateSolPerSecond) + ' · ' +
+                w.acceptedShares + ' shares accepted' +
+                (w.rejectedShares ? ', ' + w.rejectedShares + ' rejected' : '') +
+              '</div>' +
+              '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) +
+                (bestPct ? ' (' + bestPct + ' of a block)' : '') +
+              '</div>';
+            list.appendChild(row);
+          });
+        }
+
+        const banner = document.getElementById('bestShareBanner');
+        if (data.bestShareDifficultyEver > 0) {
+          const pct = formatDifficultyPct(data.bestShareDifficultyEver, data.networkDifficulty);
+          banner.classList.remove('hidden');
+          banner.innerHTML =
+            '🍀 Pool best share ever: <span class="value">' + formatDifficulty(data.bestShareDifficultyEver) + '</span>' +
+            (pct ? ' (' + pct + ' of a block)' : '') +
+            (data.bestShareDifficultyWorker ? ' — by ' + data.bestShareDifficultyWorker : '');
+        } else {
+          banner.classList.add('hidden');
+        }
+
+        document.getElementById('poolLastUpdate').textContent =
+          'Last update: ' + new Date().toLocaleTimeString('en-US');
+      } catch (e) {
+        // Silently retry on next tick — the node-status poll already surfaces connectivity issues.
+      }
+    }
+
+    async function loadPoolConfig() {
+      try {
+        const res = await fetch('/api/pool/config');
+        const data = await res.json();
+        const input = document.getElementById('minerAddressInput');
+        if (data.minerAddress && document.activeElement !== input) {
+          input.value = data.minerAddress;
+        }
+      } catch (e) {
+        // Non-critical — user can still type and save.
+      }
+    }
+
+    document.getElementById('minerAddressSave').addEventListener('click', async () => {
+      const input = document.getElementById('minerAddressInput');
+      const button = document.getElementById('minerAddressSave');
+      const msg = document.getElementById('minerAddressMsg');
+      const address = input.value.trim();
+
+      if (!address) {
+        msg.textContent = 'Enter an address first.';
+        msg.className = 'config-msg error';
+        return;
+      }
+
+      button.disabled = true;
+      msg.textContent = 'Saving …';
+      msg.className = 'config-msg';
+      try {
+        const res = await fetch('/api/pool/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minerAddress: address }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = data.message || 'Could not save address.';
+          msg.className = 'config-msg error';
+        } else {
+          msg.textContent = 'Saved. Restart the app from the Umbrel dashboard to apply it.';
+          msg.className = 'config-msg success';
+        }
+      } catch (e) {
+        msg.textContent = 'Could not reach the server.';
+        msg.className = 'config-msg error';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
     updateStatus();
+    updatePoolStatus();
+    loadPoolConfig();
     setInterval(updateStatus, 10000);
+    setInterval(updatePoolStatus, 10000);
   </script>
 </body>
 </html>
