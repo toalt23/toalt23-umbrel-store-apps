@@ -159,4 +159,6 @@ sudo docker run --rm --network umbrel_main_network \
    own container (see architecture note above); consider vardiff instead of
    fixed presets if hardware beyond the three known devices shows up;
    consider a docker-socket-proxy to narrow the Docker API access the app
-   container has.
+   container has; harden `nonce1Counter` (stratum.service.ts) against
+   wraparound at 2^32 connections — irrelevant at current scale (a handful
+   of ASICs), only worth doing if that ever changes.
