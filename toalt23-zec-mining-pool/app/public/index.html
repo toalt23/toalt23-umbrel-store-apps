@@ -511,21 +511,33 @@
       }
     }
 
+    let minerAddressMsgTimer = null;
+
+    function setMinerAddressMsg(text, kind) {
+      const msg = document.getElementById('minerAddressMsg');
+      if (minerAddressMsgTimer) clearTimeout(minerAddressMsgTimer);
+      msg.textContent = text;
+      msg.className = 'config-msg' + (kind ? ' ' + kind : '');
+      if (kind === 'success') {
+        minerAddressMsgTimer = setTimeout(() => {
+          msg.textContent = '';
+          msg.className = 'config-msg';
+        }, 6000);
+      }
+    }
+
     document.getElementById('minerAddressSave').addEventListener('click', async () => {
       const input = document.getElementById('minerAddressInput');
       const button = document.getElementById('minerAddressSave');
-      const msg = document.getElementById('minerAddressMsg');
       const address = input.value.trim();
 
       if (!address) {
-        msg.textContent = 'Enter an address first.';
-        msg.className = 'config-msg error';
+        setMinerAddressMsg('Enter an address first.', 'error');
         return;
       }
 
       button.disabled = true;
-      msg.textContent = 'Saving …';
-      msg.className = 'config-msg';
+      setMinerAddressMsg('Saving …', null);
       try {
         const res = await fetch('/api/pool/config', {
           method: 'POST',
@@ -534,18 +546,14 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          msg.textContent = data.message || 'Could not save address.';
-          msg.className = 'config-msg error';
+          setMinerAddressMsg(data.message || 'Could not save address.', 'error');
         } else if (data.zakuraRestarted) {
-          msg.textContent = 'Saved — restarting the node to apply the new address …';
-          msg.className = 'config-msg success';
+          setMinerAddressMsg('Saved — restarting the node to apply the new address …', 'success');
         } else {
-          msg.textContent = 'Saved, but could not restart the node automatically — restart it manually to apply the change.';
-          msg.className = 'config-msg error';
+          setMinerAddressMsg('Saved, but could not restart the node automatically — restart it manually to apply the change.', 'error');
         }
       } catch (e) {
-        msg.textContent = 'Could not reach the server.';
-        msg.className = 'config-msg error';
+        setMinerAddressMsg('Could not reach the server.', 'error');
       } finally {
         button.disabled = false;
       }
