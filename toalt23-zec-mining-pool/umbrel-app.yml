@@ -4,7 +4,7 @@ name: ZEC Mining Node
 tagline: ZEC Mining Pool with Zakura full node
 icon: https://raw.githubusercontent.com/toalt23/toalt23-umbrel-store-apps/master/toalt23-zec-mining-pool/icon.svg
 category: Development
-version: "1.2.6"
+version: "1.3.0"
 port: 3000
 description: >-
  ZEC Mining Node provides solo-mining directly to your own Node.
@@ -19,8 +19,11 @@ gallery:
   - https://i.imgur.com/yyVG0Jb.jpeg
   - https://i.imgur.com/yyVG0Jb.jpeg
 releaseNotes: >-
-  Small UI fix: the "address saved" confirmation message now clears
-  itself after a few seconds instead of staying on screen forever.
+  Real Equihash solution verification is live — replaced the native addon
+  that couldn't build on modern Node with a WASM build of the official
+  Zcash Foundation equihash crate. Shares are now cryptographically
+  checked, not just compared against the target hash. Also simplifies
+  and speeds up the Docker build (no more native compile toolchain).
 dependencies: []
 path: ""
 defaultUsername: ""

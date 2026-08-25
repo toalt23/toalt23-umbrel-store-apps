@@ -148,7 +148,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     if (!isEquihashVerifyAvailable()) {
       this.logger.error(
         'Starting WITHOUT Equihash solution verification — shares are only checked against the target hash, ' +
-          'not cryptographically. Fix the native equihashverify build (see Dockerfile) before relying on this.',
+          'not cryptographically. Check why equihash-verify-wasm failed to load (see the EquihashVerify logger) before relying on this.',
       );
     }
 

@@ -1,33 +1,30 @@
 # Build-Stage
 FROM node:22-alpine AS builder
 
-# node-gyp build deps for the equihashverify native addon (Equihash solution
-# verification for the stratum pool) — python3/make/g++ for node-gyp itself,
-# libsodium-dev/boost-dev because equihashverify's binding.gyp links against them.
-RUN apk add --no-cache python3 make g++ libsodium-dev boost-dev
-
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci
-
+# `npm ci` needs the "equihash-verify-wasm" local file: dependency
+# (wasm/equihash-verify/pkg) present already, so COPY everything up front
+# here rather than package*.json first — no native compile step left to
+# make caching that split worth the complexity (see wasm/equihash-verify/
+# for how that prebuilt WASM artifact is produced; it's committed, not
+# built by this Dockerfile).
 COPY . .
+RUN npm ci
 RUN npm run build
 
 # Production-Stage
 FROM node:22-alpine
 
-# Same native-build deps as the builder stage: `npm ci` below recompiles
-# equihashverify's native addon here too (not copied from the builder stage),
-# so these are needed at runtime-image build time, not just for `nest build`.
 # su-exec: lets the entrypoint start as root (to fix bind-mount ownership,
 # see docker-entrypoint.sh) and then drop to the unprivileged `node` user
 # before running the actual app.
-RUN apk add --no-cache python3 make g++ libsodium-dev boost-dev su-exec
+RUN apk add --no-cache su-exec
 
 WORKDIR /app
 
 COPY package*.json ./
+COPY --from=builder /app/wasm ./wasm
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist

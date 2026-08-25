@@ -1,0 +1,12 @@
+{
+  "name": "equihash-verify-wasm",
+  "description": "WASM wrapper around the official Zcash Foundation equihash crate, verify-only, for the ZEC mining pool's stratum server.",
+  "version": "0.1.0",
+  "files": [
+    "equihash_verify_wasm_bg.wasm",
+    "equihash_verify_wasm.js",
+    "equihash_verify_wasm.d.ts"
+  ],
+  "main": "equihash_verify_wasm.js",
+  "types": "equihash_verify_wasm.d.ts"
+}

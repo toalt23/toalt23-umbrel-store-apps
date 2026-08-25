@@ -1,0 +1,7 @@
+node_modules
+dist
+wasm/**/target
+*.log
+npm-debug.log*
+.git
+.vscode

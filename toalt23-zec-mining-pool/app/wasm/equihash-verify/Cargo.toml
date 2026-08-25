@@ -1,0 +1,17 @@
+[package]
+name = "equihash-verify-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "WASM wrapper around the official Zcash Foundation equihash crate, verify-only, for the ZEC mining pool's stratum server."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+equihash = "0.3"
+wasm-bindgen = "0.2"
+
+[profile.release]
+opt-level = "s"
+lto = true
