@@ -14,6 +14,13 @@ services:
     environment:
       ZEBRA_RPC_HOST: toalt23-zec-mining-pool_zakura_1
       ZEBRA_RPC_PORT: "8232"
+      POOL_STRATUM_PORT: "3333"
+      POOL_CONFIG_DIR: /data/pool-config
+      # POOL_SHARE_DIFFICULTY_PRESET: z15  # z9mini | z15 | z15pro — default share difficulty; per-worker override via "<worker>.<preset>"
+    ports:
+      - "3333:3333"
+    volumes:
+      - ${APP_DATA_DIR}/pool-config:/data/pool-config
     restart: on-failure
     depends_on:
       - zakura
@@ -26,6 +33,18 @@ services:
       ZAKURA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
       ZAKURA_RPC__ENABLE_COOKIE_AUTH: "false"
       ZAKURA_SYNC__PARALLEL_CPU_THREADS: "3"
+    # Required for solo mining: the coinbase output of every block template
+    # getblocktemplate hands us pays out to this address. Every stratum
+    # worker mines to the SAME address — it's set here, not chosen per
+    # worker, via the "Mining Address" field in the web UI's Miner tab
+    # (PoolConfigService writes ZAKURA_MINING__MINER_ADDRESS into this file).
+    # `required: false` so first install works before any address is set —
+    # needs a reasonably current `docker compose` (Compose Spec, not just
+    # the legacy 3.7 schema); verify with `docker compose version` if this
+    # errors on your host.
+    env_file:
+      - path: ${APP_DATA_DIR}/pool-config/zakura.env
+        required: false
     volumes:
       - ${APP_DATA_DIR}/zakura-cache:/home/zebra/.cache/zakura
     restart: on-failure
