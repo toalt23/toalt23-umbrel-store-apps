@@ -27,8 +27,9 @@ on the Umbrel Pi (not simulated):
 - ✅ Real Equihash(200,9) solution verification — also proven via
   `npm run verify:header` (it now also runs the equihashverify check against
   a real solution and confirms it valid)
-- ⏳ **Test 1** (submitblock RPC plumbing, `npm run verify:submit`) — written,
-  not yet run on the Pi
+- ✅ **Test 1** (submitblock RPC plumbing, `npm run verify:submit`) — run on
+  the Pi, node responded "duplicate" as expected. Confirms
+  `NodeService.submitBlock()`'s RPC round-trip works.
 - ⏳ **Test 2** (full share→block pipeline via a real solved share) — not
   started, needs either a real miner or a regtest setup (see below)
 - ⏳ **Real ASIC miner test** (`mining.subscribe`/`authorize`/`submit` from
@@ -130,12 +131,12 @@ sudo docker run --rm --network umbrel_main_network \
 
 ## Next steps, in order
 
-1. Run `npm run verify:submit` on the Pi (script is written, untested on
-   real hardware yet) — validates `NodeService.submitBlock()`'s RPC
-   round-trip by resubmitting an already-known block. Safe / no-op for the
-   chain (see the script's own doc comment for why). **Does not** exercise
-   `assembleBlockHex()` (the header+coinbase+tx concatenation logic) since
-   it resubmits the original raw hex unchanged.
+1. **[Done]** ~~Run `npm run verify:submit` on the Pi~~ — ran, node
+   responded "duplicate" as expected. `NodeService.submitBlock()`'s RPC
+   round-trip confirmed working. Still **not** tested:
+   `assembleBlockHex()` (the header+coinbase+tx concatenation logic) — that
+   needs Test 2 (below), since verify:submit resubmits the original raw hex
+   unchanged and never exercises it.
 2. When the user's miner (Z9 mini / Z15 / Z15 Pro) arrives: point it at
    `<pi-ip>:3333`, confirm `mining.subscribe`/`authorize`/`notify`/`submit`
    round-trip with real hardware, confirm shares get accepted.
