@@ -536,9 +536,12 @@
         if (!res.ok) {
           msg.textContent = data.message || 'Could not save address.';
           msg.className = 'config-msg error';
-        } else {
-          msg.textContent = 'Saved. Restart the app from the Umbrel dashboard to apply it.';
+        } else if (data.zakuraRestarted) {
+          msg.textContent = 'Saved — restarting the node to apply the new address …';
           msg.className = 'config-msg success';
+        } else {
+          msg.textContent = 'Saved, but could not restart the node automatically — restart it manually to apply the change.';
+          msg.className = 'config-msg error';
         }
       } catch (e) {
         msg.textContent = 'Could not reach the server.';

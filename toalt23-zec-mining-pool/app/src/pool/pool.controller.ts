@@ -10,12 +10,14 @@ import {
   PoolConfigService,
   type PoolConfigStatus,
 } from './pool-config.service';
+import { DockerControlService } from './docker-control.service';
 
 @Controller('api/pool')
 export class PoolController {
   constructor(
     private readonly stratumService: StratumService,
     private readonly poolConfigService: PoolConfigService,
+    private readonly dockerControlService: DockerControlService,
   ) {}
 
   @Get('status')
@@ -31,7 +33,7 @@ export class PoolController {
   @Post('config')
   async setConfig(
     @Body() body: { minerAddress?: string },
-  ): Promise<{ ok: true; restartRequired: true }> {
+  ): Promise<{ ok: true; zakuraRestarted: boolean }> {
     if (!body?.minerAddress || typeof body.minerAddress !== 'string') {
       throw new BadRequestException('minerAddress is required');
     }
@@ -42,6 +44,8 @@ export class PoolController {
         error instanceof Error ? error.message : 'Invalid address',
       );
     }
-    return { ok: true, restartRequired: true };
+    const zakuraRestarted =
+      await this.dockerControlService.restartZakuraContainer();
+    return { ok: true, zakuraRestarted };
   }
 }

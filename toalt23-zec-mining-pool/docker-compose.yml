@@ -21,10 +21,17 @@ services:
       POOL_STRATUM_PORT: "3333"
       POOL_CONFIG_DIR: /data/pool-config
       # POOL_SHARE_DIFFICULTY_PRESET: z15  # z9mini | z15 | z15pro — default share difficulty; per-worker override via "<worker>.<preset>"
+      ZAKURA_CONTAINER_NAME: toalt23-zec-mining-pool_zakura_1
     ports:
       - "3333:3333"
     volumes:
       - ${APP_DATA_DIR}/pool-config:/data/pool-config
+      # Lets DockerControlService restart the zakura container after a
+      # mining-address change, without restarting this app itself — see
+      # docker-entrypoint.sh for how the unprivileged app user still gets
+      # access to it, and docker-control.service.ts for the security note
+      # on what mounting this actually grants.
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: on-failure
     depends_on:
       - zakura

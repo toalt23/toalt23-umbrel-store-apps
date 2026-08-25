@@ -3,10 +3,11 @@ import { NodeModule } from '../node/node.module';
 import { PoolController } from './pool.controller';
 import { StratumService } from './stratum.service';
 import { PoolConfigService } from './pool-config.service';
+import { DockerControlService } from './docker-control.service';
 
 @Module({
   imports: [NodeModule],
   controllers: [PoolController],
-  providers: [StratumService, PoolConfigService],
+  providers: [StratumService, PoolConfigService, DockerControlService],
 })
 export class PoolModule {}
