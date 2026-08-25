@@ -9,7 +9,11 @@ services:
 
   web:
     image: toalt23/zec-mining-pool-web:latest
-    user: "1000:1000"
+    # No `user:` override here on purpose — the image's entrypoint needs to
+    # start as root to fix ownership on the pool-config bind mount (it's
+    # root-owned on first install, before the container ever runs), then
+    # drops to the unprivileged `node` user itself before running the app.
+    # See docker-entrypoint.sh / the Dockerfile for the actual privilege drop.
     init: true
     environment:
       ZEBRA_RPC_HOST: toalt23-zec-mining-pool_zakura_1
