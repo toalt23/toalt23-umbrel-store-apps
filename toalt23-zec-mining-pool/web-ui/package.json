@@ -26,9 +26,11 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/serve-static": "^5.0.5",
     "axios": "^1.19.0",
-    "equihashverify": "github:s-nomp/equihashverify",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
+  },
+  "optionalDependencies": {
+    "equihashverify": "github:s-nomp/equihashverify"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
