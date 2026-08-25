@@ -4,6 +4,7 @@ import * as path from 'path';
 
 export interface PoolConfigStatus {
   minerAddress: string | null;
+  coinbaseTag: string | null;
   configured: boolean;
 }
 
@@ -19,7 +20,16 @@ const ADDRESS_PATTERNS: RegExp[] = [
   /^u1[a-z0-9]{100,320}$/, // Unified Address
 ];
 
-const ENV_KEY = 'ZAKURA_MINING__MINER_ADDRESS';
+const ADDRESS_KEY = 'ZAKURA_MINING__MINER_ADDRESS';
+const COINBASE_TAG_KEY = 'ZAKURA_MINING__EXTRA_COINBASE_DATA';
+// Zebra's own limit — it appends this after its own emoji marker in the coinbase.
+const MAX_COINBASE_TAG_BYTES = 86;
+// Rejects the tag rather than sanitizing it: this value gets written as a raw
+// "KEY=VALUE" line in zakura.env, so a newline in it would let someone inject
+// arbitrary additional env vars into that file. Blank/space/etc. are fine —
+// only actual control characters (newlines, tabs, null bytes, ...) are barred.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR_PATTERN = /[\x00-\x1f\x7f]/;
 
 @Injectable()
 export class PoolConfigService {
@@ -33,35 +43,82 @@ export class PoolConfigService {
     return ADDRESS_PATTERNS.some((pattern) => pattern.test(trimmed));
   }
 
-  async getStatus(): Promise<PoolConfigStatus> {
+  static isValidCoinbaseTag(tag: string): boolean {
+    if (CONTROL_CHAR_PATTERN.test(tag)) return false;
+    return Buffer.byteLength(tag, 'utf8') <= MAX_COINBASE_TAG_BYTES;
+  }
+
+  private async readEnvFile(): Promise<Map<string, string>> {
+    const values = new Map<string, string>();
     try {
       const content = await fs.readFile(this.envFilePath, 'utf8');
-      const match = new RegExp(`^${ENV_KEY}=(.*)$`, 'm').exec(content);
-      const address = match?.[1]?.trim();
-      return { minerAddress: address || null, configured: !!address };
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eq = trimmed.indexOf('=');
+        if (eq === -1) continue;
+        values.set(trimmed.slice(0, eq), trimmed.slice(eq + 1));
+      }
     } catch {
-      return { minerAddress: null, configured: false };
+      // No file yet — starts empty, that's fine.
     }
+    return values;
+  }
+
+  private async writeEnvFile(values: Map<string, string>): Promise<void> {
+    await fs.mkdir(this.configDir, { recursive: true });
+    const lines = [...values.entries()].map(
+      ([key, value]) => `${key}=${value}`,
+    );
+    await fs.writeFile(
+      this.envFilePath,
+      lines.length ? lines.join('\n') + '\n' : '',
+      'utf8',
+    );
+  }
+
+  async getStatus(): Promise<PoolConfigStatus> {
+    const values = await this.readEnvFile();
+    const minerAddress = values.get(ADDRESS_KEY)?.trim() || null;
+    const coinbaseTag = values.get(COINBASE_TAG_KEY)?.trim() || null;
+    return { minerAddress, coinbaseTag, configured: !!minerAddress };
   }
 
   /**
-   * Persists the address to the file zakura's `env_file:` entry reads at
-   * container start (see docker-compose.yml). This does NOT restart zakura —
-   * env vars are only read at process startup, there's no known hot-reload
-   * for this. The caller is responsible for telling the user to restart the
-   * app from the Umbrel dashboard.
+   * Persists the mining address (required) and an optional coinbase tag —
+   * e.g. "mined by umbrel-zec-pool", shown publicly in the block's coinbase
+   * — into the file zakura's `env_file:` entry reads at container start
+   * (see docker-compose.yml). This does NOT restart zakura itself — env
+   * vars are only read at process startup; PoolController is responsible
+   * for triggering that via DockerControlService after this resolves.
    */
-  async setMinerAddress(address: string): Promise<void> {
-    const trimmed = address.trim();
-    if (!PoolConfigService.isValidAddress(trimmed)) {
+  async setConfig(
+    address: string,
+    coinbaseTag: string | undefined,
+  ): Promise<void> {
+    const trimmedAddress = address.trim();
+    if (!PoolConfigService.isValidAddress(trimmedAddress)) {
       throw new Error(
         'Does not look like a valid Zcash mainnet address (expected a t1…, t3…, zs1… or u1… address).',
       );
     }
-    await fs.mkdir(this.configDir, { recursive: true });
-    await fs.writeFile(this.envFilePath, `${ENV_KEY}=${trimmed}\n`, 'utf8');
+    const trimmedTag = (coinbaseTag ?? '').trim();
+    if (trimmedTag && !PoolConfigService.isValidCoinbaseTag(trimmedTag)) {
+      throw new Error(
+        'Coinbase tag must be plain text with no line breaks, at most 86 bytes.',
+      );
+    }
+
+    const values = await this.readEnvFile();
+    values.set(ADDRESS_KEY, trimmedAddress);
+    if (trimmedTag) {
+      values.set(COINBASE_TAG_KEY, trimmedTag);
+    } else {
+      values.delete(COINBASE_TAG_KEY);
+    }
+    await this.writeEnvFile(values);
     this.logger.log(
-      'Miner address updated on disk — restart the app for the node to pick it up.',
+      'Mining config updated on disk — restart zakura for it to take effect.',
     );
   }
 }

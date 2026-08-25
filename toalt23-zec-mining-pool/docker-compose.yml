@@ -48,7 +48,9 @@ services:
     # getblocktemplate hands us pays out to this address. Every stratum
     # worker mines to the SAME address — it's set here, not chosen per
     # worker, via the "Mining Address" field in the web UI's Miner tab
-    # (PoolConfigService writes ZAKURA_MINING__MINER_ADDRESS into this file).
+    # (PoolConfigService writes ZAKURA_MINING__MINER_ADDRESS, and optionally
+    # ZAKURA_MINING__EXTRA_COINBASE_DATA for the "coinbase tag" field, into
+    # this file).
     # `required: false` so first install works before any address is set —
     # needs a reasonably current `docker compose` (Compose Spec, not just
     # the legacy 3.7 schema); verify with `docker compose version` if this

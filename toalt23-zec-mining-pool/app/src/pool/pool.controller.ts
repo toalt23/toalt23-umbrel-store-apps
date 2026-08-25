@@ -32,16 +32,19 @@ export class PoolController {
 
   @Post('config')
   async setConfig(
-    @Body() body: { minerAddress?: string },
+    @Body() body: { minerAddress?: string; coinbaseTag?: string },
   ): Promise<{ ok: true; zakuraRestarted: boolean }> {
     if (!body?.minerAddress || typeof body.minerAddress !== 'string') {
       throw new BadRequestException('minerAddress is required');
     }
     try {
-      await this.poolConfigService.setMinerAddress(body.minerAddress);
+      await this.poolConfigService.setConfig(
+        body.minerAddress,
+        body.coinbaseTag,
+      );
     } catch (error) {
       throw new BadRequestException(
-        error instanceof Error ? error.message : 'Invalid address',
+        error instanceof Error ? error.message : 'Invalid configuration',
       );
     }
     const zakuraRestarted =

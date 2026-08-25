@@ -56,12 +56,18 @@ on the Umbrel Pi (not simulated):
   rebuild instructions. Installed as a local `file:` npm dependency
   (`equihash-verify-wasm`), so `npm ci` picks it up like any other package —
   **no Rust toolchain needed in the app's own Dockerfile.**
-- **Mining payout address is configured in the UI, not a fixed compose env
-  var.** Written to `${APP_DATA_DIR}/pool-config/zakura.env`, which zakura's
-  `env_file:` (with `required: false`) reads at container (re)start. The web
-  container auto-restarts *only* the zakura container after a save, via a
-  narrow Docker Engine API call (`POST /containers/{name}/restart`) over a
-  mounted `/var/run/docker.sock` — **the user explicitly approved this**
+- **Mining payout address (+ optional coinbase tag) is configured in the
+  UI, not a fixed compose env var.** Written to
+  `${APP_DATA_DIR}/pool-config/zakura.env` (`ZAKURA_MINING__MINER_ADDRESS`
+  and, if set, `ZAKURA_MINING__EXTRA_COINBASE_DATA` — a public label like
+  "mined by umbrel-zec-pool", max 86 bytes, appended after Zebra's own
+  emoji marker in the coinbase; validated to reject control characters
+  since it's free text going into a raw KEY=VALUE env file line), which
+  zakura's `env_file:` (with `required: false`) reads at container
+  (re)start. The web container auto-restarts *only* the zakura container
+  after a save, via a narrow Docker Engine API call
+  (`POST /containers/{name}/restart`) over a mounted
+  `/var/run/docker.sock` — **the user explicitly approved this**
   after being told what it grants (full, unrestricted Docker API access to
   anything running in that container, not just this one call). Noted
   hardening option, not implemented: a docker-socket-proxy allowlisting only

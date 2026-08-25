@@ -261,6 +261,10 @@
           <input type="text" id="minerAddressInput" placeholder="t1… / t3… / zs1… / u1…" autocomplete="off" spellcheck="false">
           <button id="minerAddressSave">Save</button>
         </div>
+        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (optional, shown publicly on found blocks — e.g. "mined by umbrel-zec-pool", max 86 bytes)</label>
+        <div class="config-row">
+          <input type="text" id="coinbaseTagInput" placeholder="mined by …" autocomplete="off" spellcheck="false" maxlength="86">
+        </div>
         <div class="config-msg" id="minerAddressMsg"></div>
       </div>
     </section>
@@ -502,9 +506,13 @@
       try {
         const res = await fetch('/api/pool/config');
         const data = await res.json();
-        const input = document.getElementById('minerAddressInput');
-        if (data.minerAddress && document.activeElement !== input) {
-          input.value = data.minerAddress;
+        const addressInput = document.getElementById('minerAddressInput');
+        if (data.minerAddress && document.activeElement !== addressInput) {
+          addressInput.value = data.minerAddress;
+        }
+        const tagInput = document.getElementById('coinbaseTagInput');
+        if (data.coinbaseTag && document.activeElement !== tagInput) {
+          tagInput.value = data.coinbaseTag;
         }
       } catch (e) {
         // Non-critical — user can still type and save.
@@ -528,8 +536,10 @@
 
     document.getElementById('minerAddressSave').addEventListener('click', async () => {
       const input = document.getElementById('minerAddressInput');
+      const tagInput = document.getElementById('coinbaseTagInput');
       const button = document.getElementById('minerAddressSave');
       const address = input.value.trim();
+      const coinbaseTag = tagInput.value.trim();
 
       if (!address) {
         setMinerAddressMsg('Enter an address first.', 'error');
@@ -542,7 +552,7 @@
         const res = await fetch('/api/pool/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ minerAddress: address }),
+          body: JSON.stringify({ minerAddress: address, coinbaseTag }),
         });
         const data = await res.json();
         if (!res.ok) {
