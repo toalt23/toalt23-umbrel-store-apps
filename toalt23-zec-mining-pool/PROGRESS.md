@@ -72,11 +72,12 @@ on the Umbrel Pi (not simulated):
   anything running in that container, not just this one call). Noted
   hardening option, not implemented: a docker-socket-proxy allowlisting only
   that one endpoint.
-- **Difficulty presets are fixed, not vardiff**: `z9mini` (~10 kSol/s),
-  `z15` (~420 kSol/s), `z15pro` (~840 kSol/s), selectable via a
-  `.<preset>` worker-name suffix. Fine for a personal solo setup with a
-  handful of known devices; vardiff would be the next step for arbitrary
-  hardware.
+- **Difficulty presets are fixed, not vardiff**: `low` (diff 16), `medium`
+  (diff 128), `high` (diff 256), selectable via the **stratum password**
+  field on `mining.authorize` (not a worker-name suffix anymore — changed
+  2026-08-29 so the worker name a miner reports is shown back untouched;
+  `"mid"` is accepted as an alias for `"medium"`). Fine for a personal solo
+  setup; vardiff would be the next step for arbitrary hardware.
 - **Best-share-difficulty and blocks-found are persisted** (survive app
   restarts) in `${APP_DATA_DIR}/pool-config/pool-stats.json`. Per-worker
   hashrate/best-share is session-scoped (resets on reconnect) — intentional,
@@ -143,10 +144,81 @@ sudo docker run --rm --network umbrel_main_network \
    `assembleBlockHex()` (the header+coinbase+tx concatenation logic) — that
    needs Test 2 (below), since verify:submit resubmits the original raw hex
    unchanged and never exercises it.
-2. When the user's miner (Z9 mini / Z15 / Z15 Pro) arrives: point it at
+2. **[Done, 2026-08-29]** ~~Replace naive interval polling with real
+   `getblocktemplate` longpoll~~ — implemented per the plan below (steps
+   2-5). `node.service.ts` has `getBlockTemplateLongPoll(longpollId,
+   timeoutMs=90000)`; `stratum.service.ts` runs a recursive
+   `runLongPollLoop()` that always re-issues with the last-received
+   `longpollid`, feeding into a shared `applyTemplate()` (mutex-guarded via
+   `this.applying`, since the fallback poll and the long-poll loop can both
+   resolve around the same time) also used by the plain fallback poll. The
+   old `setInterval` stays running too, but **not** as a rarely-used
+   fallback only — realized (2026-08-29, user caught this) it still has its
+   own job even once long-poll works: Zakura's `longpollid` is only
+   confirmed to unblock on a *new tip*; it's unverified whether it also
+   treats a mempool-only change (new fee-paying tx arriving, no new block
+   yet) as stale. So this plain poll is the one thing deliberately
+   refreshing the coinbase/template mid-block, not just insurance against
+   long-poll dying. Kept short accordingly —
+   `POOL_POLL_INTERVAL_MS` default **30000ms** (down from the initial
+   45000ms this was first shipped with; briefly 20000ms, but the user
+   found that too aggressive) — so miners are never left grinding on a
+   template that's minutes stale, while still averaging ~2 guaranteed
+   refreshes per ~75s block interval. Long-poll failures back off
+   exponentially (1s → 30s cap, `LONGPOLL_MIN/MAX_BACKOFF_MS`) so it
+   survives the `ECONNREFUSED` bursts from a zakura auto-restart without
+   dying.
+
+   **Still open — do this on the Pi before fully trusting it:** step 1 below
+   (empirically confirming Zakura's `getblocktemplate` actually blocks on
+   `longpollid` rather than returning immediately/erroring, **and** whether
+   it also unblocks on mempool-only changes or only on a new tip) was never
+   done — this was implemented directly off the existing research/plan, not
+   validated live first, since the fallback timer means it's safe to deploy
+   either way (worst case it behaves like the old pure-polling setup, just
+   at 30s instead of 15s).
+
+   **2026-08-29: added logging specifically to make this observable.**
+   `applyTemplate()` now takes a `source: 'longpoll' | 'poll'` (logging-only,
+   threaded through from whichever caller triggered it) and logs
+   `New job … via <source> (new block | mempool refresh, same block) —
+   height …, clean_jobs=…`. Watch the logs after deploying:
+   - `via longpoll (new block)` arriving right around when a block is found
+     (not up to 20s later) confirms long-poll is actually blocking and
+     pushing, not just returning immediately.
+   - `via longpoll (mempool refresh, same block)` appearing at all confirms
+     Zakura's longpollid *does* unblock on mempool-only changes too, not
+     just new tips — settles the second open question above.
+   - If everything arrives `via poll` and nothing ever shows up
+     `via longpoll`, long-poll isn't contributing — check
+     `lastTemplateError` in `/api/pool/status` and the debug logs
+     (`Long-poll getblocktemplate failed, backing off …` /
+     `Long-poll resolved with no actual template change …`).
+
+   Background/history kept for context:
+
+   Found 2026-08-25 — 15s against Zcash's ~75s block target is 20% of the
+   block interval; worst case a miner ground a stale template for up to 15s
+   after a block was found. Zakura has no ZMQ, so BIP-22 longpoll
+   (`getblocktemplate` with `{"longpollid": "<id>"}`, blocks server-side
+   until stale, re-issue immediately on response) was the only push-style
+   option.
+
+   **Real-pool research (2026-08-25):** confirmed this is a known, real
+   failure mode elsewhere, not just theoretical — ckpool (the reference
+   solo-pool implementation) polls instead of push-notifying whenever ZMQ
+   isn't wired up, and its own maintainer publicly caught Braiins' solo
+   pool doing exactly that in June 2025 (stale templates from a missing
+   `-zmqpubhashblock` hookup —
+   [ckpooldev on X](https://x.com/ckpooldev/status/1934853616235631078)).
+   ZMQ itself is a `zcashd`-only feature though — Zebra/Zakura never
+   implemented it — so any Zebra-based ZEC pool is structurally stuck with
+   either naive polling or longpoll; zcashd-based pools don't have this
+   problem at all.
+3. When the user's miner (Z9 mini / Z15 / Z15 Pro) arrives: point it at
    `<pi-ip>:3333`, confirm `mining.subscribe`/`authorize`/`notify`/`submit`
    round-trip with real hardware, confirm shares get accepted.
-3. Set up a **separate, temporary regtest zakura container** (fresh small
+4. Set up a **separate, temporary regtest zakura container** (fresh small
    cache dir, `network: Regtest`, no real P2P peers needed) to test the full
    share→block pipeline (`assembleBlockHex()` + `submitBlock()` together)
    against a genuinely-found block, in minutes instead of waiting on
@@ -155,7 +227,7 @@ sudo docker run --rm --network umbrel_main_network \
    a regtest-format mining address (different encoding than mainnet
    t1.../t3...). Not started — figure this out together when we get there,
    don't guess ahead of time.
-4. Longer-term / not urgent: consider splitting the stratum server into its
+5. Longer-term / not urgent: consider splitting the stratum server into its
    own container (see architecture note above); consider vardiff instead of
    fixed presets if hardware beyond the three known devices shows up;
    consider a docker-socket-proxy to narrow the Docker API access the app

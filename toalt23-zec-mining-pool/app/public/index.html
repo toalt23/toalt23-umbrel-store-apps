@@ -160,6 +160,27 @@
     .config-msg.error { color: var(--red); }
     .config-msg.success { color: var(--green); }
 
+    .connect-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
+    .connect-section summary { cursor: pointer; font-size: 0.82rem; color: var(--text-dim); user-select: none; }
+    .connect-section[open] summary { margin-bottom: 12px; }
+    .connect-section ol { margin: 0; padding-left: 20px; font-size: 0.86rem; line-height: 1.6; color: var(--text); }
+    .connect-section ol li + li { margin-top: 4px; }
+    .connect-section ul { margin: 6px 0 0; padding-left: 20px; color: var(--text-dim); }
+    .connect-section ul li + li { margin-top: 2px; }
+    .connect-section code {
+      background: var(--card-alt);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85em;
+      color: var(--gold-2);
+    }
+    .connect-example { margin-top: 12px; background: var(--card-alt); border-radius: 10px; padding: 10px 12px; }
+    .connect-example-title { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 6px; }
+    .connect-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 0.85rem; padding: 3px 0; }
+    .connect-row span:first-child { color: var(--text-dim); flex-shrink: 0; }
+    .connect-row code { word-break: break-all; text-align: right; }
+
     .boot-state { display: none; text-align: left; padding: 60px 16px 60px 35px; color: var(--text); font-size: 1.35rem; }
     .app.booting .boot-state { display: block; }
     .app.booting .chain-row,
@@ -254,6 +275,30 @@
       <div class="footer-row">
         <span id="poolLastUpdate">–</span>
       </div>
+
+      <details class="connect-section" open>
+        <summary>How to connect</summary>
+        <ol>
+          <li>Set the mining payout address below first — the pool can't build valid blocks without it.</li>
+          <li>Point your miner (or its pool config UI) at this node's IP — the address you use to reach this page — port <code id="connectPort">–</code>.</li>
+          <li>Worker name: anything you like, e.g. <code>rig1</code> — shown as-is once it connects, no special format needed.</li>
+          <li>
+            Password sets the share difficulty — higher means fewer, harder
+            shares, for a faster miner. Leave blank for medium.
+            <ul>
+              <li><code>low</code> — difficulty 16, e.g. Antminer Z9 mini</li>
+              <li><code>medium</code> — difficulty 128 (default), e.g. Antminer Z15</li>
+              <li><code>high</code> — difficulty 256, e.g. Antminer Z15 Pro</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="connect-example">
+          <div class="connect-example-title">Example (Antminer/Bitmain-style pool config)</div>
+          <div class="connect-row"><span>URL</span><code id="connectUrl">stratum+tcp://&lt;this node's IP&gt;:–</code></div>
+          <div class="connect-row"><span>Worker</span><code>rig1</code></div>
+          <div class="connect-row"><span>Password</span><code>high</code></div>
+        </div>
+      </details>
 
       <div class="config-section">
         <label for="minerAddressInput">Mining payout address (applies to all connected workers)</label>
@@ -448,6 +493,9 @@
 
         document.getElementById('stratumHint').textContent =
           "Point your miner at this node's IP, port " + data.stratumPort + '.';
+        document.getElementById('connectPort').textContent = data.stratumPort;
+        document.getElementById('connectUrl').textContent =
+          "stratum+tcp://<this node's IP>:" + data.stratumPort;
 
         document.getElementById('blocksFound').textContent = String(data.blocksFound);
         document.getElementById('workerCount').textContent = String(data.connectedWorkers.length);
@@ -557,6 +605,8 @@
         const data = await res.json();
         if (!res.ok) {
           setMinerAddressMsg(data.message || 'Could not save address.', 'error');
+        } else if (!data.changed) {
+          setMinerAddressMsg('No changes — address and coinbase tag already match, node not restarted.', 'success');
         } else if (data.zakuraRestarted) {
           setMinerAddressMsg('Saved — restarting the node to apply the new address …', 'success');
         } else {

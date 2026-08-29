@@ -90,12 +90,15 @@ export class PoolConfigService {
    * — into the file zakura's `env_file:` entry reads at container start
    * (see docker-compose.yml). This does NOT restart zakura itself — env
    * vars are only read at process startup; PoolController is responsible
-   * for triggering that via DockerControlService after this resolves.
+   * for triggering that via DockerControlService, but only when this
+   * resolves with `changed: true` — no point bouncing the node (and losing
+   * its current getblocktemplate/peers) on a save that didn't actually
+   * alter either value, e.g. the user just re-submitting the same form.
    */
   async setConfig(
     address: string,
     coinbaseTag: string | undefined,
-  ): Promise<void> {
+  ): Promise<{ changed: boolean }> {
     const trimmedAddress = address.trim();
     if (!PoolConfigService.isValidAddress(trimmedAddress)) {
       throw new Error(
@@ -110,6 +113,18 @@ export class PoolConfigService {
     }
 
     const values = await this.readEnvFile();
+    const previousAddress = values.get(ADDRESS_KEY);
+    const previousTag = values.get(COINBASE_TAG_KEY) ?? '';
+    const changed =
+      previousAddress !== trimmedAddress || previousTag !== trimmedTag;
+
+    if (!changed) {
+      this.logger.debug(
+        'Mining config save had no actual changes — skipping write and restart.',
+      );
+      return { changed: false };
+    }
+
     values.set(ADDRESS_KEY, trimmedAddress);
     if (trimmedTag) {
       values.set(COINBASE_TAG_KEY, trimmedTag);
@@ -120,5 +135,6 @@ export class PoolConfigService {
     this.logger.log(
       'Mining config updated on disk — restart zakura for it to take effect.',
     );
+    return { changed: true };
   }
 }

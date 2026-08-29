@@ -1,31 +1,27 @@
 export interface DifficultyPreset {
   key: string;
   label: string;
-  solPerSecond: number;
+  shareDifficulty: number;
 }
 
-// Real-world Equihash ASICs this pool is expected to see. Add more here if
-// needed — the key is what miners select via a ".<key>" worker-name suffix
-// (see StratumService#parseWorkerName), e.g. "myworker.z15pro".
+// Selected via the stratum **password** field on mining.authorize (ZIP-301's
+// `mining.authorize("<worker>", "<password>")`), not a worker-name suffix —
+// so the worker name a miner reports is shown back exactly as-is, no
+// ".<preset>" mangling (see StratumService#parsePasswordPreset). Fixed
+// difficulty values rather than hashrate-derived ones: simpler for the user
+// to reason about ("set password to high") than picking the ASIC model
+// that happens to match a target share interval.
 export const DIFFICULTY_PRESETS: DifficultyPreset[] = [
-  {
-    key: 'z9mini',
-    label: 'Antminer Z9 mini (~10 kSol/s)',
-    solPerSecond: 10_000,
-  },
-  { key: 'z15', label: 'Antminer Z15 (~420 kSol/s)', solPerSecond: 420_000 },
-  {
-    key: 'z15pro',
-    label: 'Antminer Z15 Pro (~840 kSol/s)',
-    solPerSecond: 840_000,
-  },
+  { key: 'low', label: 'Low (difficulty 16)', shareDifficulty: 16 },
+  { key: 'medium', label: 'Medium (difficulty 128)', shareDifficulty: 128 },
+  { key: 'high', label: 'High (difficulty 256)', shareDifficulty: 256 },
 ];
 
 function resolveDefaultPresetKey(): string {
   const fromEnv = process.env.POOL_SHARE_DIFFICULTY_PRESET;
   if (fromEnv && DIFFICULTY_PRESETS.some((p) => p.key === fromEnv))
     return fromEnv;
-  return 'z15';
+  return 'medium';
 }
 
 export const DEFAULT_PRESET_KEY = resolveDefaultPresetKey();
@@ -46,22 +42,12 @@ export function resolvePreset(key: string): DifficultyPreset {
   return found;
 }
 
-// How often a worker at its assigned difficulty should, on average, submit a
-// share. This reuses the same difficulty/hashrate relationship SHA256 pools
-// use (time ≈ difficulty * 2^32 / hashrate): Zcash's compact-difficulty
-// encoding was deliberately kept numerically compatible with Bitcoin's, and
-// existing Equihash pool software (z-nomp, miningcore) reuses this same
-// constant for Sol/s. It's a UX tuning knob, not a consensus rule — getting
-// it slightly wrong only changes how chatty a miner is, never correctness.
-export const TARGET_SHARE_INTERVAL_SECONDS = 15;
+// Same difficulty/hashrate relationship SHA256 pools use (time ≈ difficulty
+// * 2^32 / hashrate): Zcash's compact-difficulty encoding was deliberately
+// kept numerically compatible with Bitcoin's, and existing Equihash pool
+// software (z-nomp, miningcore) reuses this same constant for Sol/s. Used
+// below to estimate a worker's hashrate from its accepted share difficulties.
 const TWO_POW_32 = 2 ** 32;
-export const MIN_SHARE_DIFFICULTY = 0.001;
-
-export function shareDifficultyForPreset(preset: DifficultyPreset): number {
-  const diff =
-    (preset.solPerSecond * TARGET_SHARE_INTERVAL_SECONDS) / TWO_POW_32;
-  return Math.max(diff, MIN_SHARE_DIFFICULTY);
-}
 
 /**
  * diff1Target is the target corresponding to "difficulty 1" (i.e. the

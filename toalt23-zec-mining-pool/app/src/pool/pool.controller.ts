@@ -33,22 +33,27 @@ export class PoolController {
   @Post('config')
   async setConfig(
     @Body() body: { minerAddress?: string; coinbaseTag?: string },
-  ): Promise<{ ok: true; zakuraRestarted: boolean }> {
+  ): Promise<{ ok: true; changed: boolean; zakuraRestarted: boolean }> {
     if (!body?.minerAddress || typeof body.minerAddress !== 'string') {
       throw new BadRequestException('minerAddress is required');
     }
+    let changed: boolean;
     try {
-      await this.poolConfigService.setConfig(
+      ({ changed } = await this.poolConfigService.setConfig(
         body.minerAddress,
         body.coinbaseTag,
-      );
+      ));
     } catch (error) {
       throw new BadRequestException(
         error instanceof Error ? error.message : 'Invalid configuration',
       );
     }
-    const zakuraRestarted =
-      await this.dockerControlService.restartZakuraContainer();
-    return { ok: true, zakuraRestarted };
+    // Only bounce zakura when the address/tag actually changed — nothing to
+    // apply otherwise, and restarting is disruptive (drops peers, current
+    // getblocktemplate) for no reason.
+    const zakuraRestarted = changed
+      ? await this.dockerControlService.restartZakuraContainer()
+      : false;
+    return { ok: true, changed, zakuraRestarted };
   }
 }

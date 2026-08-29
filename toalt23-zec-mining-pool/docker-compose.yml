@@ -20,7 +20,9 @@ services:
       ZEBRA_RPC_PORT: "8232"
       POOL_STRATUM_PORT: "3333"
       POOL_CONFIG_DIR: /data/pool-config
-      # POOL_SHARE_DIFFICULTY_PRESET: z15  # z9mini | z15 | z15pro — default share difficulty; per-worker override via "<worker>.<preset>"
+      # POOL_SHARE_DIFFICULTY_PRESET: medium  # low (16) | medium (128) | high (256) — default share difficulty; per-worker override via the stratum password field
+      # POOL_POLL_INTERVAL_MS: "30000"    # plain poll cadence — catches new-block AND mempool-only template changes between long-poll rounds
+      # POOL_LONGPOLL_TIMEOUT_MS: "90000" # how long the long-poll RPC call is allowed to block per round
       ZAKURA_CONTAINER_NAME: toalt23-zec-mining-pool_zakura_1
     ports:
       - "3333:3333"
