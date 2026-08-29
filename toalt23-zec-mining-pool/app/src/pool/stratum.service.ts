@@ -126,25 +126,11 @@ const ERR_NOT_SUBSCRIBED = 25;
 export class StratumService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StratumService.name);
   private readonly port = Number(process.env.POOL_STRATUM_PORT ?? 3333);
-  // Long-poll (below) is the primary way a *new block* gets pushed out, but
-  // this plain poll still has its own job: catching mempool-only changes
-  // (new fee-paying transactions arriving) between blocks. Zakura's
-  // longpollid is only confirmed to unblock on a new tip (see PROGRESS.md's
-  // open validation item) — it's unverified whether it also treats a
-  // mempool-only change as "stale", so this is the one thing we know
-  // deliberately refreshes the coinbase/template mid-block, not just a
-  // rarely-used fallback. Kept fairly short (not widened all the way back
-  // to a "safety net only" cadence) so miners aren't left grinding on a
-  // template that's minutes stale.
-  private readonly pollIntervalMs = Number(
-    process.env.POOL_POLL_INTERVAL_MS ?? 30000,
-  );
   private readonly longPollTimeoutMs = Number(
     process.env.POOL_LONGPOLL_TIMEOUT_MS ?? 90000,
   );
 
   private server?: net.Server;
-  private pollTimer?: NodeJS.Timeout;
   private longPollSleepTimer?: NodeJS.Timeout;
   private readonly connections = new Map<string, WorkerConnection>();
   private readonly jobs = new Map<string, Job>();
@@ -152,14 +138,6 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
   private jobCounter = 0;
   private nonce1Counter = 0;
   private lastKnownDifficulty?: number;
-  // Guards applyTemplate() itself (not the RPC fetch) — the plain fallback
-  // poll and the long-poll loop can both resolve a template at roughly the
-  // same time, and only one should be allowed to build/broadcast a job at
-  // once.
-  private applying = false;
-  // Guards pollTemplate() specifically, so the fallback timer never has two
-  // of its own fetches in flight at once.
-  private pollingFallback = false;
   private lastLongpollId?: string;
   private longPollBackoffMs = 0;
   private stopped = false;
@@ -203,17 +181,15 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Stratum server listening on port ${this.port}`),
     );
 
-    void this.pollTemplate();
-    this.pollTimer = setInterval(
-      () => void this.pollTemplate(),
-      this.pollIntervalMs,
-    );
+    // No separate startup fetch or interval timer — runLongPollLoop() below
+    // bootstraps its own first template (retrying on its own if the node
+    // isn't reachable yet at container start) and is the sole source of
+    // template updates from here on.
     void this.runLongPollLoop();
   }
 
   onModuleDestroy() {
     this.stopped = true;
-    if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.longPollSleepTimer) clearTimeout(this.longPollSleepTimer);
     this.server?.close();
     for (const conn of this.connections.values()) conn.socket.destroy();
@@ -273,52 +249,55 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
   // ---------------------------------------------------------------------
 
   /**
-   * Plain, non-blocking fetch — used for the initial template on startup
-   * and as the slow fallback timer's tick. The long-poll loop below is the
-   * primary path once it has a longpollid to work with; this just
-   * guarantees we're never more than pollIntervalMs behind even if that
-   * connection stalls silently.
+   * Plain, non-blocking fetch — used only by runLongPollLoop() below to
+   * bootstrap the very first longpollid (there's nothing to long-poll on
+   * until we have one). Not used on any ongoing cadence: long-poll is the
+   * sole source of template updates once seeded. Retried by the loop's own
+   * "no id yet" branch, so a startup ordering issue (e.g. zakura not
+   * reachable yet when this container starts, which is routine — see the
+   * ECONNREFUSED warnings that normally precede the first job) resolves on
+   * its own instead of leaving the pool permanently without a job.
    */
-  private async pollTemplate() {
-    if (this.pollingFallback) return; // don't overlap if a previous call is slow
-    this.pollingFallback = true;
+  private async seedTemplate() {
+    let template: BlockTemplateResult;
     try {
-      let template: BlockTemplateResult;
-      try {
-        template = await this.nodeService.getBlockTemplate();
-      } catch (error) {
-        this.lastTemplateError =
-          error instanceof Error ? error.message : String(error);
-        this.logger.debug(`getblocktemplate failed: ${this.lastTemplateError}`);
-        return;
-      }
-      await this.applyTemplate(template, 'poll');
-    } finally {
-      this.pollingFallback = false;
+      template = await this.nodeService.getBlockTemplate();
+    } catch (error) {
+      this.lastTemplateError =
+        error instanceof Error ? error.message : String(error);
+      this.logger.debug(`getblocktemplate failed: ${this.lastTemplateError}`);
+      return;
     }
+    await this.applyTemplate(template, 'poll');
   }
 
   /**
-   * Recursive BIP-22 long-poll loop — the closest thing to ZMQ-style block
-   * push this node can offer. Zebra/Zakura has no ZMQ (a zcashd-only
-   * feature), so this is the ceiling of what's achievable here; see
-   * PROGRESS.md for the research behind that conclusion. Each round blocks
-   * server-side in getblocktemplate on the last-seen longpollid until the
-   * node considers it stale (normally: a new block), applies whatever comes
+   * Recursive BIP-22 long-poll loop — the sole source of template updates.
+   * The closest thing to ZMQ-style block push this node can offer:
+   * Zebra/Zakura has no ZMQ (a zcashd-only feature), so this is the ceiling
+   * of what's achievable here; see PROGRESS.md for the research behind
+   * that conclusion, and for the live confirmation (2026-08-29) that
+   * Zakura's longpollid reliably unblocks on both a new tip *and*
+   * mempool-only changes — the latter was the reason an extra plain-poll
+   * timer existed for a while; removed once that was confirmed redundant.
+   * Each round blocks server-side in getblocktemplate on the last-seen
+   * longpollid until the node considers it stale, applies whatever comes
    * back, then immediately re-issues with the fresh id. Runs for the
    * lifetime of the service — stopped only via `this.stopped` in
    * onModuleDestroy.
    */
   private async runLongPollLoop() {
     while (!this.stopped) {
-      const longpollId = this.lastLongpollId;
+      let longpollId = this.lastLongpollId;
       if (!longpollId) {
-        // Nothing to long-poll on yet — the initial plain fetch hasn't
-        // succeeded yet, or this node/version doesn't return a longpollid
-        // at all. Wait for the fallback timer to (maybe) produce one
-        // rather than busy-looping.
-        await this.sleep(LONGPOLL_RETRY_WITHOUT_ID_MS);
-        continue;
+        await this.seedTemplate();
+        longpollId = this.lastLongpollId;
+        if (!longpollId) {
+          // Still nothing — node not reachable yet, or this version
+          // doesn't return a longpollid at all. Retry rather than spin.
+          await this.sleep(LONGPOLL_RETRY_WITHOUT_ID_MS);
+          continue;
+        }
       }
 
       try {
@@ -356,107 +335,100 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Turns a fetched template (from either the plain poll or the long-poll
-   * loop) into a job and broadcasts it if anything actually changed.
-   * Guarded against overlapping with itself: the plain fallback poll and
-   * the long-poll loop can each resolve a template at roughly the same
-   * time, and only one should build/broadcast a job at once.
+   * Turns a fetched template (from seedTemplate() or the long-poll loop)
+   * into a job and broadcasts it if anything actually changed. Only ever
+   * called sequentially from within runLongPollLoop()'s single while loop
+   * (seedTemplate() itself is only invoked from there too), so no overlap
+   * guard is needed — there is exactly one template fetch in flight at any
+   * time.
    *
    * `source` is only used for logging — it's what lets us tell from the
-   * logs alone whether long-poll is actually earning its keep (jobs
-   * arriving via 'longpoll' right as a block lands) versus everything
-   * still coming from the 'poll' fallback, and whether a mempool-only
-   * refresh (see PROGRESS.md's open validation item) is coming from
-   * long-poll or only ever from the plain poll.
+   * logs alone whether a job came from the initial/reconnect bootstrap
+   * ('poll') or from long-poll actually doing its job ('longpoll'), and
+   * whether that was for a new block or a mempool-only refresh.
    */
   private async applyTemplate(
     template: BlockTemplateResult,
     source: 'longpoll' | 'poll',
   ) {
-    if (this.applying) return;
-    this.applying = true;
+    this.lastLongpollId = template.longpollid;
+    this.lastTemplateError = undefined;
+    this.lastTemplateFetchedAt = new Date();
+
+    const prevJob = this.currentJob;
+    const changed =
+      !prevJob ||
+      prevJob.template.previousblockhash !== template.previousblockhash ||
+      prevJob.template.defaultroots?.merkleroot !==
+        template.defaultroots?.merkleroot;
+    if (!changed) {
+      // Only notable for 'longpoll': it resolved but nothing actually
+      // changed, which — if it happens right away rather than after a
+      // long block-sized wait — is a sign the node isn't really blocking
+      // on longpollid (see PROGRESS.md's open validation item). Expected
+      // and unremarkable for 'poll', which always fetches a live
+      // snapshot regardless of whether it changed.
+      if (source === 'longpoll') {
+        this.logger.debug(
+          'Long-poll resolved with no actual template change (unexpected unless it was a long wait).',
+        );
+      }
+      return;
+    }
+
+    const cleanJobs =
+      !prevJob ||
+      prevJob.template.previousblockhash !== template.previousblockhash;
+
+    let difficulty = this.lastKnownDifficulty;
     try {
-      this.lastLongpollId = template.longpollid;
-      this.lastTemplateError = undefined;
-      this.lastTemplateFetchedAt = new Date();
-
-      const prevJob = this.currentJob;
-      const changed =
-        !prevJob ||
-        prevJob.template.previousblockhash !== template.previousblockhash ||
-        prevJob.template.defaultroots?.merkleroot !==
-          template.defaultroots?.merkleroot;
-      if (!changed) {
-        // Only notable for 'longpoll': it resolved but nothing actually
-        // changed, which — if it happens right away rather than after a
-        // long block-sized wait — is a sign the node isn't really blocking
-        // on longpollid (see PROGRESS.md's open validation item). Expected
-        // and unremarkable for 'poll', which always fetches a live
-        // snapshot regardless of whether it changed.
-        if (source === 'longpoll') {
-          this.logger.debug(
-            'Long-poll resolved with no actual template change (unexpected unless it was a long wait).',
-          );
-        }
-        return;
-      }
-
-      const cleanJobs =
-        !prevJob ||
-        prevJob.template.previousblockhash !== template.previousblockhash;
-
-      let difficulty = this.lastKnownDifficulty;
-      try {
-        difficulty = await this.nodeService.getNetworkDifficulty();
-        this.lastKnownDifficulty = difficulty;
-      } catch (error) {
-        this.logger.warn(
-          `getblockchaininfo (needed for share-difficulty math) failed: ${error instanceof Error ? error.message : error}`,
-        );
-        if (difficulty == null) return; // no reference point at all yet, skip this round
-      }
-
-      const networkTarget = hexToBigInt(template.target);
-      const diff1Target = diff1TargetFrom(networkTarget, difficulty);
-      let fields: HeaderFields;
-      try {
-        fields = extractHeaderFields(template);
-      } catch (error) {
-        this.lastTemplateError =
-          error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `Could not build header fields from template: ${this.lastTemplateError}`,
-        );
-        return;
-      }
-
-      const jobId = (++this.jobCounter).toString(16);
-      const job: Job = {
-        id: jobId,
-        template,
-        fields,
-        networkTarget,
-        diff1Target,
-        createdAt: Date.now(),
-        seen: new Set(),
-      };
-      this.currentJob = job;
-      this.jobs.set(jobId, job);
-      this.pruneOldJobs();
-
-      const reason = cleanJobs ? 'new block' : 'mempool refresh, same block';
-      this.logger.log(
-        `New job ${jobId} via ${source} (${reason}) — height ${template.height}, ` +
-          `${this.connections.size} connection(s), clean_jobs=${cleanJobs}`,
+      difficulty = await this.nodeService.getNetworkDifficulty();
+      this.lastKnownDifficulty = difficulty;
+    } catch (error) {
+      this.logger.warn(
+        `getblockchaininfo (needed for share-difficulty math) failed: ${error instanceof Error ? error.message : error}`,
       );
+      if (difficulty == null) return; // no reference point at all yet, skip this round
+    }
 
-      for (const conn of this.connections.values()) {
-        if (!conn.subscribed || !conn.workerName) continue;
-        this.sendTargetForConnection(conn);
-        this.sendJob(conn, job, cleanJobs);
-      }
-    } finally {
-      this.applying = false;
+    const networkTarget = hexToBigInt(template.target);
+    const diff1Target = diff1TargetFrom(networkTarget, difficulty);
+    let fields: HeaderFields;
+    try {
+      fields = extractHeaderFields(template);
+    } catch (error) {
+      this.lastTemplateError =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Could not build header fields from template: ${this.lastTemplateError}`,
+      );
+      return;
+    }
+
+    const jobId = (++this.jobCounter).toString(16);
+    const job: Job = {
+      id: jobId,
+      template,
+      fields,
+      networkTarget,
+      diff1Target,
+      createdAt: Date.now(),
+      seen: new Set(),
+    };
+    this.currentJob = job;
+    this.jobs.set(jobId, job);
+    this.pruneOldJobs();
+
+    const reason = cleanJobs ? 'new block' : 'mempool refresh, same block';
+    this.logger.log(
+      `New job ${jobId} via ${source} (${reason}) — height ${template.height}, ` +
+        `${this.connections.size} connection(s), clean_jobs=${cleanJobs}`,
+    );
+
+    for (const conn of this.connections.values()) {
+      if (!conn.subscribed || !conn.workerName) continue;
+      this.sendTargetForConnection(conn);
+      this.sendJob(conn, job, cleanJobs);
     }
   }
 

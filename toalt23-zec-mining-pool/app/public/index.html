@@ -130,7 +130,7 @@
     .best-share-banner.hidden { display: none; }
 
     .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
-    .config-section label { display: block; font-size: 0.82rem; color: var(--text-dim); margin-bottom: 6px; }
+    .config-section label { display: block; font-size: 0.95rem; font-weight: 600; color: var(--text); margin-bottom: 6px; }
     .config-row { display: flex; gap: 8px; }
     .config-row input {
       flex: 1;
@@ -159,6 +159,18 @@
     .config-msg { font-size: 0.78rem; margin-top: 8px; min-height: 1.1em; }
     .config-msg.error { color: var(--red); }
     .config-msg.success { color: var(--green); }
+
+    .template-error-banner {
+      background: rgba(248, 113, 113, 0.12);
+      border: 1px solid var(--red);
+      color: var(--red);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .template-error-banner.hidden { display: none; }
 
     .connect-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
     .connect-section summary { cursor: pointer; font-size: 0.82rem; color: var(--text-dim); user-select: none; }
@@ -258,10 +270,10 @@
     </section>
 
     <section id="tab-miner" class="card" style="display:none">
+      <div class="template-error-banner hidden" id="templateErrorBanner"></div>
       <div class="placeholder hidden" id="minerEmpty">
         <div class="big">⛏️</div>
         <div>No workers connected yet.</div>
-        <div class="sub" id="stratumHint">Point your miner at this node's IP, port –.</div>
       </div>
       <div id="minerContent" class="hidden">
         <div class="stats" style="grid-template-columns: 1fr 1fr 1fr;">
@@ -276,19 +288,18 @@
         <span id="poolLastUpdate">–</span>
       </div>
 
-      <details class="connect-section" open>
+      <details class="connect-section">
         <summary>How to connect</summary>
         <ol>
-          <li>Set the mining payout address below first — the pool can't build valid blocks without it.</li>
-          <li>Point your miner (or its pool config UI) at this node's IP — the address you use to reach this page — port <code id="connectPort">–</code>.</li>
-          <li>Worker name: anything you like, e.g. <code>rig1</code> — shown as-is once it connects, no special format needed.</li>
+          <li>Set the payout address below first — required to build valid blocks.</li>
+          <li>Point your miner at this node's IP (same address as this page), port <code id="connectPort">–</code>.</li>
+          <li>Worker name: anything, e.g. <code>rig1</code>.</li>
           <li>
-            Password sets the share difficulty — higher means fewer, harder
-            shares, for a faster miner. Leave blank for medium.
+            Password sets the share difficulty (higher = fewer, harder shares):
             <ul>
-              <li><code>low</code> — difficulty 16, e.g. Antminer Z9 mini</li>
-              <li><code>medium</code> — difficulty 128 (default), e.g. Antminer Z15</li>
-              <li><code>high</code> — difficulty 256, e.g. Antminer Z15 Pro</li>
+              <li><code>low</code> — diff 16 (Z9 mini)</li>
+              <li><code>medium</code> — diff 128, default (Z15)</li>
+              <li><code>high</code> — diff 256 (Z15 Pro)</li>
             </ul>
           </li>
         </ol>
@@ -301,14 +312,16 @@
       </details>
 
       <div class="config-section">
-        <label for="minerAddressInput">Mining payout address (applies to all connected workers)</label>
+        <label for="minerAddressInput">Mining payout address</label>
         <div class="config-row">
           <input type="text" id="minerAddressInput" placeholder="t1… / t3… / zs1… / u1…" autocomplete="off" spellcheck="false">
-          <button id="minerAddressSave">Save</button>
         </div>
-        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (optional, shown publicly on found blocks — e.g. "mined by umbrel-zec-pool", max 86 bytes)</label>
+        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (max 86 characters)</label>
         <div class="config-row">
           <input type="text" id="coinbaseTagInput" placeholder="mined by …" autocomplete="off" spellcheck="false" maxlength="86">
+        </div>
+        <div class="config-row" style="margin-top: 12px;">
+          <button id="minerAddressSave">Save address &amp; tag</button>
         </div>
         <div class="config-msg" id="minerAddressMsg"></div>
       </div>
@@ -491,11 +504,19 @@
         const res = await fetch('/api/pool/status');
         const data = await res.json();
 
-        document.getElementById('stratumHint').textContent =
-          "Point your miner at this node's IP, port " + data.stratumPort + '.';
         document.getElementById('connectPort').textContent = data.stratumPort;
         document.getElementById('connectUrl').textContent =
           "stratum+tcp://<this node's IP>:" + data.stratumPort;
+
+        const templateErrorBanner = document.getElementById('templateErrorBanner');
+        if (data.lastTemplateError) {
+          templateErrorBanner.textContent =
+            '⚠️ Getting new mining jobs is currently failing (' + data.lastTemplateError +
+            ') — miners may be stuck on a stale job until this recovers.';
+          templateErrorBanner.classList.remove('hidden');
+        } else {
+          templateErrorBanner.classList.add('hidden');
+        }
 
         document.getElementById('blocksFound').textContent = String(data.blocksFound);
         document.getElementById('workerCount').textContent = String(data.connectedWorkers.length);

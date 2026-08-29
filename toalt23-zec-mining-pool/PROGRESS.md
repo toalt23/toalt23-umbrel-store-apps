@@ -144,58 +144,71 @@ sudo docker run --rm --network umbrel_main_network \
    `assembleBlockHex()` (the header+coinbase+tx concatenation logic) — that
    needs Test 2 (below), since verify:submit resubmits the original raw hex
    unchanged and never exercises it.
-2. **[Done, 2026-08-29]** ~~Replace naive interval polling with real
-   `getblocktemplate` longpoll~~ — implemented per the plan below (steps
-   2-5). `node.service.ts` has `getBlockTemplateLongPoll(longpollId,
-   timeoutMs=90000)`; `stratum.service.ts` runs a recursive
-   `runLongPollLoop()` that always re-issues with the last-received
-   `longpollid`, feeding into a shared `applyTemplate()` (mutex-guarded via
-   `this.applying`, since the fallback poll and the long-poll loop can both
-   resolve around the same time) also used by the plain fallback poll. The
-   old `setInterval` stays running too, but **not** as a rarely-used
-   fallback only — realized (2026-08-29, user caught this) it still has its
-   own job even once long-poll works: Zakura's `longpollid` is only
-   confirmed to unblock on a *new tip*; it's unverified whether it also
-   treats a mempool-only change (new fee-paying tx arriving, no new block
-   yet) as stale. So this plain poll is the one thing deliberately
-   refreshing the coinbase/template mid-block, not just insurance against
-   long-poll dying. Kept short accordingly —
-   `POOL_POLL_INTERVAL_MS` default **30000ms** (down from the initial
-   45000ms this was first shipped with; briefly 20000ms, but the user
-   found that too aggressive) — so miners are never left grinding on a
-   template that's minutes stale, while still averaging ~2 guaranteed
-   refreshes per ~75s block interval. Long-poll failures back off
-   exponentially (1s → 30s cap, `LONGPOLL_MIN/MAX_BACKOFF_MS`) so it
-   survives the `ECONNREFUSED` bursts from a zakura auto-restart without
-   dying.
+2. **[Done, 2026-08-29 — live-verified on the Pi]** ~~Replace naive interval
+   polling with real `getblocktemplate` longpoll~~. Final design:
+   `node.service.ts` has `getBlockTemplateLongPoll(longpollId,
+   timeoutMs=90000)`; `stratum.service.ts`'s `runLongPollLoop()` is the
+   **sole** source of template updates — recursive, always re-issues with
+   the last-received `longpollid`, feeding into `applyTemplate()`. There is
+   no separate interval-poll fallback: `seedTemplate()` is a plain
+   (non-longpoll) fetch, but it's only ever called from *inside*
+   `runLongPollLoop()`'s "no longpollid yet" branch, to bootstrap the very
+   first one (retried every `LONGPOLL_RETRY_WITHOUT_ID_MS` = 5s if the node
+   isn't reachable yet at container start — routine, see the
+   `ECONNREFUSED` warnings that normally precede the first job). Long-poll
+   failures back off exponentially (1s → 30s cap,
+   `LONGPOLL_MIN/MAX_BACKOFF_MS`) so it survives the `ECONNREFUSED` bursts
+   from a zakura auto-restart without dying. Because there's only ever one
+   fetch in flight (the loop is strictly sequential), `applyTemplate()`
+   needs no overlap guard.
 
-   **Still open — do this on the Pi before fully trusting it:** step 1 below
-   (empirically confirming Zakura's `getblocktemplate` actually blocks on
-   `longpollid` rather than returning immediately/erroring, **and** whether
-   it also unblocks on mempool-only changes or only on a new tip) was never
-   done — this was implemented directly off the existing research/plan, not
-   validated live first, since the fallback timer means it's safe to deploy
-   either way (worst case it behaves like the old pure-polling setup, just
-   at 30s instead of 15s).
+   **Confirmed live in the logs (2026-08-29), settling both previously-open
+   questions:**
+   - Zakura's `getblocktemplate` really does block server-side on
+     `longpollid` rather than returning immediately — `New job … via
+     longpoll (new block)` arrived with realistic, varying delays (2 min,
+     then 4s, then 21s later) matching real block-time variance, not a
+     fixed timeout pattern.
+   - It **also** unblocks on mempool-only changes, not just a new tip —
+     confirmed by frequent `New job … via longpoll (mempool refresh, same
+     block)` lines, in fact firing every 5-30s on its own even with 0
+     miners connected. This made the fallback poll (which existed
+     specifically because this was unverified) provably redundant, so it
+     was removed entirely rather than just slowed down — see history below.
+   - Bonus confirmation from the same log: the no-op-restart-skip fix (see
+     item above this one) also fired correctly (`Mining config save had no
+     actual changes — skipping write and restart.`).
 
-   **2026-08-29: added logging specifically to make this observable.**
-   `applyTemplate()` now takes a `source: 'longpoll' | 'poll'` (logging-only,
-   threaded through from whichever caller triggered it) and logs
-   `New job … via <source> (new block | mempool refresh, same block) —
-   height …, clean_jobs=…`. Watch the logs after deploying:
-   - `via longpoll (new block)` arriving right around when a block is found
-     (not up to 20s later) confirms long-poll is actually blocking and
-     pushing, not just returning immediately.
-   - `via longpoll (mempool refresh, same block)` appearing at all confirms
-     Zakura's longpollid *does* unblock on mempool-only changes too, not
-     just new tips — settles the second open question above.
-   - If everything arrives `via poll` and nothing ever shows up
-     `via longpoll`, long-poll isn't contributing — check
-     `lastTemplateError` in `/api/pool/status` and the debug logs
-     (`Long-poll getblocktemplate failed, backing off …` /
-     `Long-poll resolved with no actual template change …`).
+   Logging distinguishes the source for exactly this kind of live
+   verification: `applyTemplate()` takes a `source: 'longpoll' | 'poll'`
+   (logging-only) and logs `New job … via <source> (new block | mempool
+   refresh, same block) — height …, clean_jobs=…`. If long-poll ever stops
+   contributing (only `via poll` bootstrap lines, no `via longpoll` ever),
+   check `lastTemplateError` in `/api/pool/status` and the debug logs
+   (`Long-poll getblocktemplate failed, backing off …` / `Long-poll
+   resolved with no actual template change …`).
+
+   **New: `lastTemplateError` surfaced in the UI, not just the API/logs**
+   (user asked, 2026-08-29) — a red banner at the top of the Miner tab
+   (`#templateErrorBanner` in `public/index.html`) shows whenever
+   `/api/pool/status`'s `lastTemplateError` is set, e.g. "Getting new
+   mining jobs is currently failing (…) — miners may be stuck on a stale
+   job until this recovers." Clears automatically once a fetch succeeds
+   again (`applyTemplate()` resets it unconditionally).
 
    Background/history kept for context:
+
+   **Why there was a fallback poll at all for a while, and why it's gone
+   again (2026-08-29):** once long-poll was implemented but not yet
+   live-verified, it was unknown whether Zakura's `longpollid` treated a
+   mempool-only change as stale or only a new tip — so a plain poll was
+   kept running (interval tuned 45s → 20s → 30s based on user preference)
+   specifically to guarantee the coinbase/mempool still refreshed mid-block
+   either way. The user noticed the two mechanisms seemed to be
+   interacting/overlapping and asked to just remove the poll now that
+   long-poll's mempool-refresh behavior was confirmed above — done; the
+   *only* remaining plain fetch is `seedTemplate()`'s one-time bootstrap
+   role.
 
    Found 2026-08-25 — 15s against Zcash's ~75s block target is 20% of the
    block interval; worst case a miner ground a stale template for up to 15s
