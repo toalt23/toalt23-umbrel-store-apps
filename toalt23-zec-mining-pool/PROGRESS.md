@@ -234,7 +234,8 @@ sudo docker run --rm --network umbrel_main_network \
    real hardware, confirm shares get accepted.~~ An Antminer Z9 mini is
    connected and mining against the pool (`low` preset, difficulty 16);
    shares are being accepted. Real-hardware testing immediately surfaced
-   two dashboard bugs, both fixed (shipped as 1.5.1):
+   two dashboard bugs, fixed across 1.5.1 and a 1.5.2 follow-up (the
+   hashrate fix needed two passes — see below):
    - **Hashrate estimate wildly inflated.** `estimateHashrate()` was fed
      the sum of each share's *achieved* difficulty
      (`difficultyFromHash()`'s result — exponentially distributed, mean =
@@ -247,9 +248,26 @@ sudo docker run --rm --network umbrel_main_network \
      `achievedDifficulty` is still correctly used for the separate
      best-share/luck tracking (`bestShareDifficulty` /
      `bestShareDifficultyEver`) — only the hashrate window had the bug.
+
+     **1.5.2 follow-up — this alone wasn't enough.** After the 1.5.1 fix
+     the Z9 mini still showed GSol/s (5.82 GSol/s instead of ~12-14
+     kSol/s, a ~524,288x overstatement). Root cause: `estimateHashrate()`
+     multiplied by a hardcoded `2^32`, the Bitcoin-pool convention — valid
+     only because Bitcoin's own "difficulty 1" target sits at ~2^224
+     (`2^256/2^224 = 2^32`). This pool's `diff1Target` is derived live
+     from Zcash's *actual* powLimit instead, which is far higher/easier
+     (~2^243), so the correct multiplier is `2^256/diff1Target` (~2^13 for
+     Zcash, not 2^32) — `2^(243-224) = 2^19 = 524,288`, matching the
+     observed error factor exactly. Fixed in `difficulty.ts`:
+     `estimateHashrate()` now takes `diff1Target` and derives the
+     multiplier from it directly instead of assuming any fixed chain.
    - **Best share shown in scientific notation** (`9.11e+2`) — `public/
-     index.html`'s `formatDifficulty()` used `toExponential(2)`; now
-     `Math.round(d).toLocaleString('en-US')` for a plain number.
+     index.html`'s `formatDifficulty()` used `toExponential(2)`. 1.5.1
+     changed it to a comma-formatted integer; 1.5.2 changed it again, to
+     reuse `formatShortNumber()` (the same K/M/G-suffix formatter the
+     node's own difficulty stat uses), per user request for visual
+     consistency between the two stats (e.g. best share "1.68 K" next to
+     network difficulty "228.22 M").
 
    Also added while testing: **stale-share tracking**. Submissions for a
    job the pool had already evicted (`ERR_JOB_NOT_FOUND`, jobs capped at

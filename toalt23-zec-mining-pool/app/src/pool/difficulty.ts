@@ -42,12 +42,17 @@ export function resolvePreset(key: string): DifficultyPreset {
   return found;
 }
 
-// Same difficulty/hashrate relationship SHA256 pools use (time ≈ difficulty
-// * 2^32 / hashrate): Zcash's compact-difficulty encoding was deliberately
-// kept numerically compatible with Bitcoin's, and existing Equihash pool
-// software (z-nomp, miningcore) reuses this same constant for Sol/s. Used
-// below to estimate a worker's hashrate from its accepted share difficulties.
-const TWO_POW_32 = 2 ** 32;
+// Bitcoin pools estimate hashrate as difficulty * 2^32 / time because
+// Bitcoin's own "difficulty 1" target sits at ~2^224, and 2^256 / 2^224 =
+// 2^32. That constant is NOT chain-agnostic — it only holds because of
+// where Bitcoin's powLimit happens to sit. Zcash's powLimit (and therefore
+// diff1Target, derived live below) is far higher/easier, around 2^243, so
+// reusing a hardcoded 2^32 here previously overstated every hashrate
+// estimate by roughly 2^(243-224) = 2^19 (~524,288x) — confirmed against a
+// real Antminer Z9 mini, which reported GSol/s instead of its real ~12-14
+// kSol/s. Deriving the multiplier from the actual diff1Target instead
+// keeps this correct regardless of which chain/powLimit is running.
+const TWO_POW_256 = 2 ** 256;
 
 /**
  * diff1Target is the target corresponding to "difficulty 1" (i.e. the
@@ -97,7 +102,9 @@ export function difficultyFromHash(diff1Target: bigint, hash: bigint): number {
 export function estimateHashrate(
   totalShareDifficulty: number,
   windowSeconds: number,
+  diff1Target: bigint,
 ): number {
-  if (windowSeconds <= 0) return 0;
-  return (totalShareDifficulty * TWO_POW_32) / windowSeconds;
+  if (windowSeconds <= 0 || diff1Target <= 0n) return 0;
+  const multiplier = TWO_POW_256 / Number(diff1Target);
+  return (totalShareDifficulty * multiplier) / windowSeconds;
 }

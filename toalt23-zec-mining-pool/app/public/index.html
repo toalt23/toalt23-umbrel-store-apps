@@ -497,9 +497,12 @@
       return v.toFixed(2) + ' ' + units[i];
     }
 
+    // Same short-number format as the node's own difficulty stat (formatShortNumber
+    // above), so a share's difficulty reads on the same scale a user already
+    // recognizes (e.g. "12.22 K" next to a network difficulty of "228.22 M").
     function formatDifficulty(d) {
       if (!d) return '0';
-      return Math.round(d).toLocaleString('en-US');
+      return formatShortNumber(d);
     }
 
     // "Luck" framing: what % of a full network difficulty this share represents —

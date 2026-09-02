@@ -237,6 +237,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
             estimatedHashrateSolPerSecond: estimateHashrate(
               totalDifficulty,
               windowSeconds,
+              this.currentJob?.diff1Target ?? 0n,
             ),
             bestShareDifficulty: c.bestShareDifficulty,
             connectedAt: new Date(c.connectedAt).toISOString(),
