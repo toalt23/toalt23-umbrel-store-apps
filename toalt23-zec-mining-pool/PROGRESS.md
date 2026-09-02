@@ -1,6 +1,6 @@
 # ZEC Mining Pool — Progress / Continuity Notes
 
-Last updated: 2026-08-25 (session with Claude). Read this before picking the
+Last updated: 2026-09-02 (session with Claude). Read this before picking the
 project back up — saves re-deriving context.
 
 ## What this app is
@@ -228,9 +228,41 @@ sudo docker run --rm --network umbrel_main_network \
    implemented it — so any Zebra-based ZEC pool is structurally stuck with
    either naive polling or longpoll; zcashd-based pools don't have this
    problem at all.
-3. When the user's miner (Z9 mini / Z15 / Z15 Pro) arrives: point it at
-   `<pi-ip>:3333`, confirm `mining.subscribe`/`authorize`/`notify`/`submit`
-   round-trip with real hardware, confirm shares get accepted.
+3. **[Done, 2026-09-02 — first real ASIC connected]** ~~When the user's
+   miner (Z9 mini / Z15 / Z15 Pro) arrives: point it at `<pi-ip>:3333`,
+   confirm `mining.subscribe`/`authorize`/`notify`/`submit` round-trip with
+   real hardware, confirm shares get accepted.~~ An Antminer Z9 mini is
+   connected and mining against the pool (`low` preset, difficulty 16);
+   shares are being accepted. Real-hardware testing immediately surfaced
+   two dashboard bugs, both fixed (shipped as 1.5.1):
+   - **Hashrate estimate wildly inflated.** `estimateHashrate()` was fed
+     the sum of each share's *achieved* difficulty
+     (`difficultyFromHash()`'s result — exponentially distributed, mean =
+     assigned difficulty) instead of the *assigned* share difficulty. A
+     single lucky share (achieved difficulty ~57x the assigned 16) was
+     enough to inflate the windowed sum and misreport the Z9 mini's real
+     ~12-14 kSol/s as tens of GSol/s. Fixed in `stratum.service.ts`: the
+     per-share sample pushed into `recentShareDifficulties` is now
+     `conn.shareDifficulty` (the assigned target), not `achievedDifficulty`.
+     `achievedDifficulty` is still correctly used for the separate
+     best-share/luck tracking (`bestShareDifficulty` /
+     `bestShareDifficultyEver`) — only the hashrate window had the bug.
+   - **Best share shown in scientific notation** (`9.11e+2`) — `public/
+     index.html`'s `formatDifficulty()` used `toExponential(2)`; now
+     `Math.round(d).toLocaleString('en-US')` for a plain number.
+
+   Also added while testing: **stale-share tracking**. Submissions for a
+   job the pool had already evicted (`ERR_JOB_NOT_FOUND`, jobs capped at
+   `MAX_JOBS_RETAINED = 6`) were answered with a stratum error but never
+   counted anywhere — invisible in the dashboard. Added a `staleShares`
+   counter per worker (`stratum.service.ts`), surfaced next to
+   accepted/rejected in the Miner tab's worker row. Duplicate-share
+   submissions (`ERR_DUPLICATE_SHARE`) now also count into `rejectedShares`
+   (previously uncounted too).
+
+   Still not exercised: the full share→block submit pipeline
+   (`assembleBlockHex()` + `NodeService.submitBlock()` together) — that's
+   item 4 below, needs either a very lucky real share or the regtest setup.
 4. Set up a **separate, temporary regtest zakura container** (fresh small
    cache dir, `network: Regtest`, no real P2P peers needed) to test the full
    share→block pipeline (`assembleBlockHex()` + `submitBlock()` together)

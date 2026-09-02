@@ -67,6 +67,8 @@ interface WorkerConnection {
   lastShareAt?: number;
   acceptedShares: number;
   rejectedShares: number;
+  /** Submissions for a job the pool no longer knows about (ERR_JOB_NOT_FOUND) — usually the miner racing a job change, not an invalid share. Tracked separately from rejectedShares. */
+  staleShares: number;
   recentShareDifficulties: ShareSample[];
   /** Highest difficulty this worker has achieved this session — resets on reconnect, unlike the pool-wide record below. */
   bestShareDifficulty: number;
@@ -78,6 +80,7 @@ export interface PoolWorkerStatus {
   shareDifficulty: number;
   acceptedShares: number;
   rejectedShares: number;
+  staleShares: number;
   estimatedHashrateSolPerSecond: number;
   bestShareDifficulty: number;
   connectedAt: string;
@@ -230,6 +233,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
             shareDifficulty: c.shareDifficulty,
             acceptedShares: c.acceptedShares,
             rejectedShares: c.rejectedShares,
+            staleShares: c.staleShares,
             estimatedHashrateSolPerSecond: estimateHashrate(
               totalDifficulty,
               windowSeconds,
@@ -460,6 +464,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       connectedAt: Date.now(),
       acceptedShares: 0,
       rejectedShares: 0,
+      staleShares: 0,
       recentShareDifficulties: [],
       bestShareDifficulty: 0,
     };
@@ -603,13 +608,15 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     }
 
     const job = this.jobs.get(jobId);
-    if (!job)
+    if (!job) {
+      conn.staleShares++;
       return this.sendError(
         conn,
         id,
         ERR_JOB_NOT_FOUND,
         'Job not found (stale)',
       );
+    }
 
     let nonce2: Buffer;
     let solutionWithPrefix: Buffer;
@@ -633,8 +640,10 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     }
 
     const dedupeKey = `${nonce2Hex}:${timeHex}`;
-    if (job.seen.has(dedupeKey))
+    if (job.seen.has(dedupeKey)) {
+      conn.rejectedShares++;
       return this.sendError(conn, id, ERR_DUPLICATE_SHARE, 'Duplicate share');
+    }
     job.seen.add(dedupeKey);
 
     const nonceBytes = Buffer.concat([conn.nonce1, nonce2]);
@@ -710,9 +719,15 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     conn.acceptedShares++;
     conn.lastShareAt = Date.now();
     const achievedDifficulty = difficultyFromHash(job.diff1Target, hash);
+    // Hashrate estimation needs the *assigned* share difficulty here, not the
+    // achieved one: achieved difficulty is exponentially distributed around
+    // the assigned target, so a single lucky share (e.g. 50x target) would
+    // otherwise dominate the windowed sum and wildly skew estimateHashrate().
+    // Luck tracking (bestShareDifficulty / bestShareDifficultyEver below)
+    // correctly uses achievedDifficulty — only the hashrate window doesn't.
     conn.recentShareDifficulties.push({
       at: Date.now(),
-      difficulty: achievedDifficulty,
+      difficulty: conn.shareDifficulty,
     });
     this.pruneOldShares(conn);
     if (achievedDifficulty > conn.bestShareDifficulty) {

@@ -491,7 +491,7 @@
     }
 
     function formatSol(v) {
-      const units = ['Sol/s', 'kSol/s', 'MSol/s'];
+      const units = ['Sol/s', 'kSol/s', 'MSol/s', 'GSol/s'];
       let i = 0;
       while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
       return v.toFixed(2) + ' ' + units[i];
@@ -499,7 +499,7 @@
 
     function formatDifficulty(d) {
       if (!d) return '0';
-      return d.toExponential(2);
+      return Math.round(d).toLocaleString('en-US');
     }
 
     // "Luck" framing: what % of a full network difficulty this share represents —
@@ -567,6 +567,7 @@
                 formatSol(w.estimatedHashrateSolPerSecond) + ' · ' +
                 w.acceptedShares + ' shares accepted' +
                 (w.rejectedShares ? ', ' + w.rejectedShares + ' rejected' : '') +
+                (w.staleShares ? ', ' + w.staleShares + ' stale' : '') +
               '</div>' +
               '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) +
                 (bestPct ? ' (' + bestPct + ' of a block)' : '') +
