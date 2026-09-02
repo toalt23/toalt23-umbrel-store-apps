@@ -20,6 +20,7 @@
       --green: #4ade80;
       --red: #f87171;
       --amber: #fbbf24;
+      --cyan: #22d3ee;
     }
     * { box-sizing: border-box; }
     body {
@@ -116,6 +117,9 @@
     .worker-row { background: var(--card-alt); padding: 12px 14px; border-radius: 10px; }
     .worker-row .worker-name { font-weight: 600; }
     .worker-row .worker-meta { font-size: 0.82rem; color: var(--text-dim); margin-top: 3px; }
+    .worker-row .worker-hashrate { font-size: 1.3rem; font-weight: 700; color: var(--cyan); }
+    .worker-row .worker-shares-ok { color: var(--green); }
+    .worker-row .worker-shares-bad { color: var(--red); }
     .worker-row .worker-best { font-size: 0.78rem; color: var(--gold-2); margin-top: 3px; }
 
     .best-share-banner {
@@ -567,10 +571,10 @@
             row.innerHTML =
               '<div class="worker-name">' + w.workerName + '</div>' +
               '<div class="worker-meta">' +
-                formatSol(w.estimatedHashrateSolPerSecond) + ' · ' +
-                w.acceptedShares + ' shares accepted' +
-                (w.rejectedShares ? ', ' + w.rejectedShares + ' rejected' : '') +
-                (w.staleShares ? ', ' + w.staleShares + ' stale' : '') +
+                '<span class="worker-hashrate">' + formatSol(w.estimatedHashrateSolPerSecond) + '</span>' +
+                ' · <span class="worker-shares-ok">' + w.acceptedShares + ' shares accepted</span>' +
+                (w.rejectedShares ? ', <span class="worker-shares-bad">' + w.rejectedShares + ' rejected</span>' : '') +
+                (w.staleShares ? ', <span class="worker-shares-bad">' + w.staleShares + ' stale</span>' : '') +
               '</div>' +
               '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) +
                 (bestPct ? ' (' + bestPct + ' of a block)' : '') +
