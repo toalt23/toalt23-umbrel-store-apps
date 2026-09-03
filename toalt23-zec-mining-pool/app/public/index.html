@@ -20,7 +20,7 @@
       --green: #4ade80;
       --red: #f87171;
       --amber: #fbbf24;
-      --cyan: #22d3ee;
+      --violet: #a78bfa;
     }
     * { box-sizing: border-box; }
     body {
@@ -117,20 +117,21 @@
     .worker-row { background: var(--card-alt); padding: 12px 14px; border-radius: 10px; }
     .worker-row .worker-name { font-weight: 600; }
     .worker-row .worker-meta { font-size: 0.82rem; color: var(--text-dim); margin-top: 3px; }
-    .worker-row .worker-hashrate { font-size: 1.3rem; font-weight: 700; color: var(--cyan); }
+    .worker-row .worker-hashrate { font-size: 1.3rem; font-weight: 700; color: var(--violet); }
     .worker-row .worker-shares-ok { color: var(--green); }
     .worker-row .worker-shares-bad { color: var(--red); }
     .worker-row .worker-best { font-size: 0.78rem; color: var(--gold-2); margin-top: 3px; }
 
     .best-share-banner {
-      background: var(--card-alt);
+      background: linear-gradient(135deg, rgba(253, 206, 88, 0.14), var(--card-alt));
+      border: 1px solid rgba(253, 206, 88, 0.35);
       border-radius: 10px;
-      padding: 12px 14px;
+      padding: 14px 16px;
       margin-top: 10px;
-      font-size: 0.85rem;
+      font-size: 0.95rem;
       color: var(--text-dim);
     }
-    .best-share-banner .value { color: var(--gold-2); font-weight: 600; }
+    .best-share-banner .value { color: var(--gold-2); font-weight: 700; font-size: 1.1em; }
     .best-share-banner.hidden { display: none; }
 
     .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
@@ -248,33 +249,11 @@
     </div>
 
     <nav class="tabs">
-      <button class="active" data-tab="node">Node</button>
-      <button data-tab="miner">Miner</button>
+      <button class="active" data-tab="miner">Miner</button>
+      <button data-tab="node">Node</button>
     </nav>
 
-    <section id="tab-node" class="card">
-      <div class="stats">
-        <div class="stat"><div class="stat-label">Block Height</div><div class="stat-value" id="currentHeight">–</div></div>
-        <div class="stat hidden" id="syncStat">
-          <div class="stat-label">Sync Status</div>
-          <div class="stat-value" id="syncStatus">–</div>
-          <div class="stat-sub" id="syncSub"></div>
-        </div>
-        <div class="stat hidden" id="hashrateStat"><div class="stat-label">Network Hashrate</div><div class="stat-value" id="hashrate">–</div></div>
-        <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="difficulty">–</div></div>
-        <div class="stat hidden" id="priceStat"><div class="stat-label">ZEC Price</div><div class="stat-value" id="price">–</div></div>
-        <div class="stat hidden" id="rewardStat"><div class="stat-label">Block Reward</div><div class="stat-value" id="reward">–</div></div>
-        <div class="stat hidden" id="peersStat"><div class="stat-label">Peers</div><div class="stat-value" id="peers">–</div></div>
-        <div class="stat hidden" id="diskStat"><div class="stat-label">Chain Size</div><div class="stat-value" id="disk">–</div></div>
-        <div class="stat hidden" id="versionStat"><div class="stat-label">Node Version</div><div class="stat-value" id="version">–</div></div>
-      </div>
-
-      <div class="footer-row">
-        <span id="lastUpdate">–</span>
-      </div>
-    </section>
-
-    <section id="tab-miner" class="card" style="display:none">
+    <section id="tab-miner" class="card">
       <div class="template-error-banner hidden" id="templateErrorBanner">
         <div id="templateErrorMain"></div>
         <div class="template-error-sub" id="templateErrorSub"></div>
@@ -305,7 +284,7 @@
           <li>
             Password sets the share difficulty (higher = fewer, harder shares):
             <ul>
-              <li><code>low</code> — diff 16 (Z9 mini)</li>
+              <li><code>low</code> — diff 20 (Z9 mini)</li>
               <li><code>medium</code> — diff 128, default (Z15)</li>
               <li><code>high</code> — diff 256 (Z15 Pro)</li>
             </ul>
@@ -332,6 +311,28 @@
           <button id="minerAddressSave">Save</button>
         </div>
         <div class="config-msg" id="minerAddressMsg"></div>
+      </div>
+    </section>
+
+    <section id="tab-node" class="card" style="display:none">
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Block Height</div><div class="stat-value" id="currentHeight">–</div></div>
+        <div class="stat hidden" id="syncStat">
+          <div class="stat-label">Sync Status</div>
+          <div class="stat-value" id="syncStatus">–</div>
+          <div class="stat-sub" id="syncSub"></div>
+        </div>
+        <div class="stat hidden" id="hashrateStat"><div class="stat-label">Network Hashrate</div><div class="stat-value" id="hashrate">–</div></div>
+        <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="difficulty">–</div></div>
+        <div class="stat hidden" id="priceStat"><div class="stat-label">ZEC Price</div><div class="stat-value" id="price">–</div></div>
+        <div class="stat hidden" id="rewardStat"><div class="stat-label">Block Reward</div><div class="stat-value" id="reward">–</div></div>
+        <div class="stat hidden" id="peersStat"><div class="stat-label">Peers</div><div class="stat-value" id="peers">–</div></div>
+        <div class="stat hidden" id="diskStat"><div class="stat-label">Chain Size</div><div class="stat-value" id="disk">–</div></div>
+        <div class="stat hidden" id="versionStat"><div class="stat-label">Node Version</div><div class="stat-value" id="version">–</div></div>
+      </div>
+
+      <div class="footer-row">
+        <span id="lastUpdate">–</span>
       </div>
     </section>
 
@@ -504,17 +505,18 @@
     // Same short-number format as the node's own difficulty stat (formatShortNumber
     // above), so a share's difficulty reads on the same scale a user already
     // recognizes (e.g. "12.22 K" next to a network difficulty of "228.22 M").
+    function formatDateDDMMYY(iso) {
+      if (!iso) return null;
+      const d = new Date(iso);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yy = String(d.getFullYear()).slice(-2);
+      return dd + '.' + mm + '.' + yy;
+    }
+
     function formatDifficulty(d) {
       if (!d) return '0';
       return formatShortNumber(d);
-    }
-
-    // "Luck" framing: what % of a full network difficulty this share represents —
-    // more intuitive for a solo miner than the raw (tiny) difficulty number.
-    function formatDifficultyPct(shareDiff, networkDiff) {
-      if (!shareDiff || !networkDiff) return null;
-      const pct = (shareDiff / networkDiff) * 100;
-      return pct < 0.01 ? '<0.01%' : pct.toFixed(2) + '%';
     }
 
     async function updatePoolStatus() {
@@ -565,7 +567,6 @@
           const list = document.getElementById('workerList');
           list.innerHTML = '';
           data.connectedWorkers.forEach((w) => {
-            const bestPct = formatDifficultyPct(w.bestShareDifficulty, data.networkDifficulty);
             const row = document.createElement('div');
             row.className = 'worker-row';
             row.innerHTML =
@@ -576,20 +577,18 @@
                 (w.rejectedShares ? ', <span class="worker-shares-bad">' + w.rejectedShares + ' rejected</span>' : '') +
                 (w.staleShares ? ', <span class="worker-shares-bad">' + w.staleShares + ' stale</span>' : '') +
               '</div>' +
-              '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) +
-                (bestPct ? ' (' + bestPct + ' of a block)' : '') +
-              '</div>';
+              '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) + '</div>';
             list.appendChild(row);
           });
         }
 
         const banner = document.getElementById('bestShareBanner');
         if (data.bestShareDifficultyEver > 0) {
-          const pct = formatDifficultyPct(data.bestShareDifficultyEver, data.networkDifficulty);
+          const dateStr = formatDateDDMMYY(data.bestShareDifficultyAt);
           banner.classList.remove('hidden');
           banner.innerHTML =
             '🍀 Pool best share ever: <span class="value">' + formatDifficulty(data.bestShareDifficultyEver) + '</span>' +
-            (pct ? ' (' + pct + ' of a block)' : '') +
+            (dateStr ? ' (' + dateStr + ')' : '') +
             (data.bestShareDifficultyWorker ? ' — by ' + data.bestShareDifficultyWorker : '');
         } else {
           banner.classList.add('hidden');
