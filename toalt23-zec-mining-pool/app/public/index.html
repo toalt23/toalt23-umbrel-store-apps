@@ -20,7 +20,6 @@
       --green: #4ade80;
       --red: #f87171;
       --amber: #fbbf24;
-      --orange: #fb923c;
     }
     * { box-sizing: border-box; }
     body {
@@ -117,7 +116,7 @@
     .worker-row { background: var(--card-alt); padding: 12px 14px; border-radius: 10px; }
     .worker-row .worker-name { font-weight: 600; }
     .worker-row .worker-meta { font-size: 0.82rem; color: var(--text-dim); margin-top: 3px; }
-    .worker-row .worker-hashrate { font-size: 1.3rem; font-weight: 700; color: var(--orange); }
+    .worker-row .worker-hashrate { font-size: 1.3rem; font-weight: 700; color: #ffffff; text-shadow: 0 0 12px rgba(255, 255, 255, 0.45); }
     .worker-row .worker-shares-ok { color: var(--green); }
     .worker-row .worker-shares-bad { color: var(--red); }
     .worker-row .worker-best { font-size: 0.78rem; color: var(--gold-2); margin-top: 3px; }
@@ -284,7 +283,7 @@
           <li>
             Password sets the share difficulty (higher = fewer, harder shares):
             <ul>
-              <li><code>low</code> — diff 20 (Z9 mini)</li>
+              <li><code>low</code> — diff 24 (Z9 mini)</li>
               <li><code>medium</code> — diff 128, default (Z15)</li>
               <li><code>high</code> — diff 256 (Z15 Pro)</li>
             </ul>

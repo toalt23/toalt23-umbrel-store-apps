@@ -12,7 +12,7 @@ export interface DifficultyPreset {
 // to reason about ("set password to high") than picking the ASIC model
 // that happens to match a target share interval.
 export const DIFFICULTY_PRESETS: DifficultyPreset[] = [
-  { key: 'low', label: 'Low (difficulty 20)', shareDifficulty: 20 },
+  { key: 'low', label: 'Low (difficulty 24)', shareDifficulty: 24 },
   { key: 'medium', label: 'Medium (difficulty 128)', shareDifficulty: 128 },
   { key: 'high', label: 'High (difficulty 256)', shareDifficulty: 256 },
 ];
