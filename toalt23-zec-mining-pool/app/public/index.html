@@ -154,7 +154,7 @@
     }
     .config-row input:focus { outline: none; border-color: var(--gold-1); }
     .config-row button {
-      background: var(--gold-1);
+      background: var(--gold-2);
       color: #16130a;
       border: none;
       border-radius: 8px;
@@ -342,9 +342,9 @@
       </div>
 
       <div class="config-section">
-        <label>Pool best share record</label>
+        <label>Pool's best share</label>
         <div class="config-row">
-          <button id="resetBestShareBtn" class="danger-button">Reset best share</button>
+          <button id="resetBestShareBtn" class="danger-button">Reset</button>
         </div>
         <div class="config-msg" id="resetBestShareMsg"></div>
       </div>
@@ -707,14 +707,14 @@
     }
 
     document.getElementById('resetBestShareBtn').addEventListener('click', async () => {
-      if (!confirm('Reset the pool best share record? This cannot be undone.')) return;
+      if (!confirm("Reset Pool's best share? This cannot be undone.")) return;
       const button = document.getElementById('resetBestShareBtn');
       button.disabled = true;
       setResetBestShareMsg('Resetting …', null);
       try {
         const res = await fetch('/api/pool/reset-best-share', { method: 'POST' });
         if (!res.ok) throw new Error('request failed');
-        setResetBestShareMsg('Best share record reset', 'success');
+        setResetBestShareMsg('Best share was reset', 'success');
         updatePoolStatus();
       } catch (e) {
         setResetBestShareMsg('Could not reach the server.', 'error');
