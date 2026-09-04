@@ -223,6 +223,42 @@
       color: var(--text-dim);
     }
     .powered-by img { height: 28px; width: auto; display: block; }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 1000;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-box {
+      background: var(--card);
+      border: 1px solid rgba(253, 206, 88, 0.3);
+      border-radius: 14px;
+      max-width: 340px;
+      width: 100%;
+      padding: 18px 20px;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--card-alt);
+    }
+    .modal-header svg { width: 22px; height: 22px; flex-shrink: 0; }
+    .modal-header span { font-weight: 700; font-size: 0.95rem; color: var(--text); }
+    .modal-body { font-size: 0.88rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 18px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+    .modal-btn { border: none; border-radius: 8px; padding: 9px 16px; font-weight: 600; font-size: 0.86rem; cursor: pointer; font-family: inherit; }
+    .modal-btn-secondary { background: var(--card-alt); color: var(--text); }
+    .modal-btn-danger { background: transparent; border: 1px solid var(--red); color: var(--red); }
   </style>
 </head>
 <body>
@@ -350,6 +386,30 @@
         <div class="config-msg" id="resetBestShareMsg"></div>
       </div>
     </section>
+
+    <div class="modal-overlay hidden" id="confirmOverlay">
+      <div class="modal-box">
+        <div class="modal-header">
+          <svg viewBox="0 0 2500 2500" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="zGradModal" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0" stop-color="#cf8724"/>
+                <stop offset="1" stop-color="#fdce58"/>
+              </linearGradient>
+            </defs>
+            <path fill="url(#zGradModal)" d="M1263.05,2297.61c-569.6,0-1034.57-465.43-1034.57-1034.56,0-569.6,465.44-1034.57,1034.57-1034.57,569.6,0,1034.56,465.44,1034.56,1034.57C2297.61,1832.65,1832.65,2297.61,1263.05,2297.61Z"/>
+            <path fill="#1a1a22" d="M1250,2500C562.5,2500,0,1937.5,0,1250S562.5,0,1250,0,2500,562.5,2500,1250,1937.5,2500,1250,2500Zm0-2222.06c-534.56,0-972.06,437.5-972.06,972.06s437.5,972.06,972.06,972.06,972.06-437.5,972.06-972.06S1784.56,277.94,1250,277.94Z"/>
+            <path fill="#1a1a22" d="M1221.05,1588.59h541.67v270.84h-319.6v229.16H1165.18V1866.53H831.85c0-90.44-13.73-180.4,7.1-263.73,7.1-41.67,55.4-83.34,90.43-125,104.17-125,208.34-250,319.61-375,41.66-48.77,83.33-90.44,132.1-145.83H860.26V686.13h305.39V457h270.84V679h333.33c0,90.43,13.73,180.4-7.1,263.73-7.1,41.67-55.4,83.33-90.44,125-104.16,125-208.33,250-319.6,375C1311,1491.53,1269.35,1539.82,1221.05,1588.59Z"/>
+          </svg>
+          <span>ZEC Mining Node</span>
+        </div>
+        <div class="modal-body" id="confirmMessage"></div>
+        <div class="modal-actions">
+          <button id="confirmCancel" class="modal-btn modal-btn-secondary">Cancel</button>
+          <button id="confirmOk" class="modal-btn modal-btn-danger">Reset</button>
+        </div>
+      </div>
+    </div>
 
     <div class="powered-by">
       <span>Powered by</span>
@@ -697,6 +757,32 @@
       }
     });
 
+    // Styled stand-in for window.confirm() — resolves true/false, same as confirm() would.
+    function showConfirmDialog(message) {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById('confirmOverlay');
+        const okBtn = document.getElementById('confirmOk');
+        const cancelBtn = document.getElementById('confirmCancel');
+        document.getElementById('confirmMessage').textContent = message;
+        overlay.classList.remove('hidden');
+
+        function cleanup(result) {
+          overlay.classList.add('hidden');
+          okBtn.removeEventListener('click', onOk);
+          cancelBtn.removeEventListener('click', onCancel);
+          overlay.removeEventListener('click', onOverlayClick);
+          resolve(result);
+        }
+        function onOk() { cleanup(true); }
+        function onCancel() { cleanup(false); }
+        function onOverlayClick(e) { if (e.target === overlay) cleanup(false); }
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        overlay.addEventListener('click', onOverlayClick);
+      });
+    }
+
     let resetBestShareMsgTimer = null;
 
     function setResetBestShareMsg(text, kind) {
@@ -713,7 +799,8 @@
     }
 
     document.getElementById('resetBestShareBtn').addEventListener('click', async () => {
-      if (!confirm("Reset Pool's best share? This cannot be undone.")) return;
+      const confirmed = await showConfirmDialog("Reset Pool's best share? This cannot be undone.");
+      if (!confirmed) return;
       const button = document.getElementById('resetBestShareBtn');
       button.disabled = true;
       setResetBestShareMsg('Resetting …', null);
