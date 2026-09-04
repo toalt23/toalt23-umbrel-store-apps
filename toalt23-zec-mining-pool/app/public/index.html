@@ -122,15 +122,19 @@
     .worker-row .worker-best { font-size: 0.78rem; color: var(--gold-2); margin-top: 3px; }
 
     .best-share-banner {
-      background: linear-gradient(135deg, rgba(253, 206, 88, 0.14), var(--card-alt));
-      border: 1px solid rgba(253, 206, 88, 0.35);
+      background: linear-gradient(135deg, rgba(253, 206, 88, 0.16), var(--card-alt));
+      border: 1px solid rgba(253, 206, 88, 0.4);
       border-radius: 10px;
       padding: 14px 16px;
       margin-top: 10px;
       font-size: 0.95rem;
       color: var(--text-dim);
+      box-shadow: 0 0 24px rgba(253, 206, 88, 0.18);
     }
-    .best-share-banner .value { color: var(--gold-2); font-weight: 700; font-size: 1.1em; }
+    .best-share-banner .icon { font-size: 1.5em; vertical-align: middle; margin-right: 2px; filter: drop-shadow(0 0 6px rgba(253, 206, 88, 0.6)); }
+    .best-share-banner .value { color: var(--gold-2); font-weight: 700; font-size: 1.15em; text-shadow: 0 0 10px rgba(253, 206, 88, 0.55); }
+    .best-share-banner .value-sub { color: var(--gold-2); font-weight: 600; }
+    .best-share-banner .meta-line { margin-top: 6px; font-size: 0.85em; }
     .best-share-banner.hidden { display: none; }
 
     .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
@@ -520,6 +524,15 @@
       return formatShortNumber(d);
     }
 
+    function formatDateDDMMYY(iso) {
+      if (!iso) return null;
+      const d = new Date(iso);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yy = String(d.getFullYear()).slice(-2);
+      return dd + '.' + mm + '.' + yy;
+    }
+
     async function updatePoolStatus() {
       try {
         const res = await fetch('/api/pool/status');
@@ -588,11 +601,15 @@
           const atDifficulty = data.bestShareNetworkDifficulty != null
             ? formatDifficulty(data.bestShareNetworkDifficulty)
             : null;
+          const dateStr = formatDateDDMMYY(data.bestShareDifficultyAt);
+          const metaParts = [];
+          if (data.bestShareDifficultyWorker) metaParts.push('worker: ' + data.bestShareDifficultyWorker);
+          if (dateStr) metaParts.push(dateStr);
           banner.classList.remove('hidden');
           banner.innerHTML =
-            '🍀 Pool best share ever: <span class="value">' + formatDifficulty(data.bestShareDifficultyEver) + '</span>' +
-            (atDifficulty ? ' (at target difficulty ' + atDifficulty + ')' : '') +
-            (data.bestShareDifficultyWorker ? ' — worker: ' + data.bestShareDifficultyWorker : '');
+            '<span class="icon">🍀</span> Pool best difficulty <span class="value">' + formatDifficulty(data.bestShareDifficultyEver) + '</span>' +
+            (atDifficulty ? ' / target <span class="value-sub">' + atDifficulty + '</span>' : '') +
+            (metaParts.length ? '<div class="meta-line">' + metaParts.join(' · ') + '</div>' : '');
         } else {
           banner.classList.add('hidden');
         }
