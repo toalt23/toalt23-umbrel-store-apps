@@ -177,9 +177,7 @@
     .template-error-banner.hidden { display: none; }
     .template-error-sub { margin-top: 6px; opacity: 0.85; font-size: 0.8rem; }
 
-    .connect-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
-    .connect-section summary { cursor: pointer; font-size: 1rem; color: var(--text-dim); user-select: none; }
-    .connect-section[open] summary { margin-bottom: 12px; }
+    .connect-section .section-heading { font-size: 1rem; color: var(--text-dim); margin-bottom: 12px; }
     .connect-section ol { margin: 0; padding-left: 20px; font-size: 0.86rem; line-height: 1.6; color: var(--text); }
     .connect-section ol li + li { margin-top: 4px; }
     .connect-section ul { margin: 6px 0 0; padding-left: 20px; color: var(--text-dim); }
@@ -250,6 +248,7 @@
     <nav class="tabs">
       <button class="active" data-tab="miner">Miner</button>
       <button data-tab="node">Node</button>
+      <button data-tab="setup">Setup</button>
     </nav>
 
     <section id="tab-miner" class="card">
@@ -272,44 +271,6 @@
       </div>
       <div class="footer-row">
         <span id="poolLastUpdate">–</span>
-      </div>
-
-      <details class="connect-section">
-        <summary>How to connect</summary>
-        <ol>
-          <li>Set the payout address below first — required to build valid blocks.</li>
-          <li>Point your miner at this node's IP (same address as this page), port <code id="connectPort">–</code>.</li>
-          <li>Worker name: anything, e.g. <code>rig1</code>.</li>
-          <li>
-            Password sets the share difficulty (higher = fewer, harder shares):
-            <ul>
-              <li><code>low</code> — diff 24 (Z9 mini)</li>
-              <li><code>medium</code> — diff 128, default (Z15)</li>
-              <li><code>high</code> — diff 256 (Z15 Pro)</li>
-            </ul>
-          </li>
-        </ol>
-        <div class="connect-example">
-          <div class="connect-example-title">Example (Antminer/Bitmain-style pool config)</div>
-          <div class="connect-row"><span>URL</span><code id="connectUrl">stratum+tcp://&lt;this node's IP&gt;:–</code></div>
-          <div class="connect-row"><span>Worker</span><code>rig1</code></div>
-          <div class="connect-row"><span>Password</span><code>high</code></div>
-        </div>
-      </details>
-
-      <div class="config-section">
-        <label for="minerAddressInput">Mining payout address</label>
-        <div class="config-row">
-          <input type="text" id="minerAddressInput" placeholder="t1… / t3… / zs1… / u1…" autocomplete="off" spellcheck="false">
-        </div>
-        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (max 86 characters)</label>
-        <div class="config-row">
-          <input type="text" id="coinbaseTagInput" placeholder="mined by …" autocomplete="off" spellcheck="false" maxlength="86">
-        </div>
-        <div class="config-row" style="margin-top: 12px;">
-          <button id="minerAddressSave">Save</button>
-        </div>
-        <div class="config-msg" id="minerAddressMsg"></div>
       </div>
     </section>
 
@@ -335,6 +296,46 @@
       </div>
     </section>
 
+    <section id="tab-setup" class="card" style="display:none">
+      <div class="connect-section">
+        <div class="section-heading">How to connect</div>
+        <ol>
+          <li>Set the payout address below first — required to build valid blocks.</li>
+          <li>Point your miner at this node's IP (same address as this page), port <code id="connectPort">–</code>.</li>
+          <li>Worker name: anything, e.g. <code>rig1</code>.</li>
+          <li>
+            Password sets the share difficulty (higher = fewer, harder shares):
+            <ul>
+              <li><code>low</code> — diff 24 (Z9 mini)</li>
+              <li><code>medium</code> — diff 128, default (Z15)</li>
+              <li><code>high</code> — diff 256 (Z15 Pro)</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="connect-example">
+          <div class="connect-example-title">Example (Antminer/Bitmain-style pool config)</div>
+          <div class="connect-row"><span>URL</span><code id="connectUrl">stratum+tcp://&lt;this node's IP&gt;:–</code></div>
+          <div class="connect-row"><span>Worker</span><code>rig1</code></div>
+          <div class="connect-row"><span>Password</span><code>high</code></div>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <label for="minerAddressInput">Mining payout address</label>
+        <div class="config-row">
+          <input type="text" id="minerAddressInput" placeholder="t1… / t3… / zs1… / u1…" autocomplete="off" spellcheck="false">
+        </div>
+        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (max 86 characters)</label>
+        <div class="config-row">
+          <input type="text" id="coinbaseTagInput" placeholder="mined by …" autocomplete="off" spellcheck="false" maxlength="86">
+        </div>
+        <div class="config-row" style="margin-top: 12px;">
+          <button id="minerAddressSave">Save</button>
+        </div>
+        <div class="config-msg" id="minerAddressMsg"></div>
+      </div>
+    </section>
+
     <div class="powered-by">
       <span>Powered by</span>
       <img src="/zakura-logo.png" alt="Zakura">
@@ -346,8 +347,9 @@
       btn.addEventListener('click', () => {
         document.querySelectorAll('nav.tabs button').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
-        document.getElementById('tab-node').style.display = btn.dataset.tab === 'node' ? 'block' : 'none';
-        document.getElementById('tab-miner').style.display = btn.dataset.tab === 'miner' ? 'block' : 'none';
+        document.querySelectorAll('[id^="tab-"]').forEach((section) => {
+          section.style.display = section.id === 'tab-' + btn.dataset.tab ? 'block' : 'none';
+        });
       });
     });
 
