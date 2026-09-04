@@ -114,9 +114,9 @@
     #minerContent.hidden { display: none; }
 
     .worker-row { background: var(--card-alt); padding: 12px 14px; border-radius: 10px; }
-    .worker-row .worker-name { font-weight: 600; }
-    .worker-row .worker-meta { font-size: 0.82rem; color: var(--text-dim); margin-top: 3px; }
+    .worker-row .worker-name,
     .worker-row .worker-hashrate { font-size: 1.3rem; font-weight: 700; color: #ffffff; text-shadow: 0 0 12px rgba(255, 255, 255, 0.45); }
+    .worker-row .worker-meta { font-size: 0.82rem; color: var(--text-dim); margin-top: 3px; }
     .worker-row .worker-shares-ok { color: var(--green); }
     .worker-row .worker-shares-bad { color: var(--red); }
     .worker-row .worker-best { font-size: 0.78rem; color: var(--gold-2); margin-top: 3px; }
@@ -267,8 +267,8 @@
           <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
           <div class="stat"><div class="stat-label">Verification</div><div class="stat-value" id="verifyStatus">–</div></div>
         </div>
-        <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
         <div class="best-share-banner hidden" id="bestShareBanner"></div>
+        <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
       </div>
       <div class="footer-row">
         <span id="poolLastUpdate">–</span>
@@ -515,15 +515,6 @@
     // Same short-number format as the node's own difficulty stat (formatShortNumber
     // above), so a share's difficulty reads on the same scale a user already
     // recognizes (e.g. "12.22 K" next to a network difficulty of "228.22 M").
-    function formatDateDDMMYY(iso) {
-      if (!iso) return null;
-      const d = new Date(iso);
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const yy = String(d.getFullYear()).slice(-2);
-      return dd + '.' + mm + '.' + yy;
-    }
-
     function formatDifficulty(d) {
       if (!d) return '0';
       return formatShortNumber(d);
@@ -594,12 +585,14 @@
 
         const banner = document.getElementById('bestShareBanner');
         if (data.bestShareDifficultyEver > 0) {
-          const dateStr = formatDateDDMMYY(data.bestShareDifficultyAt);
+          const atDifficulty = data.bestShareNetworkDifficulty != null
+            ? formatDifficulty(data.bestShareNetworkDifficulty)
+            : null;
           banner.classList.remove('hidden');
           banner.innerHTML =
             '🍀 Pool best share ever: <span class="value">' + formatDifficulty(data.bestShareDifficultyEver) + '</span>' +
-            (dateStr ? ' (' + dateStr + ')' : '') +
-            (data.bestShareDifficultyWorker ? ' — by ' + data.bestShareDifficultyWorker : '');
+            (atDifficulty ? ' (at target difficulty ' + atDifficulty + ')' : '') +
+            (data.bestShareDifficultyWorker ? ' — worker: ' + data.bestShareDifficultyWorker : '');
         } else {
           banner.classList.add('hidden');
         }

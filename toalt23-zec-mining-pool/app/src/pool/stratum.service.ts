@@ -101,6 +101,8 @@ export interface PoolStatus {
   bestShareDifficultyEver: number;
   bestShareDifficultyWorker?: string;
   bestShareDifficultyAt?: string;
+  /** Network difficulty at the moment bestShareDifficultyEver was found. */
+  bestShareNetworkDifficulty?: number;
   lastTemplateFetchedAt?: string;
   lastTemplateError?: string;
   connectedWorkers: PoolWorkerStatus[];
@@ -151,6 +153,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
   private bestShareDifficultyEver = 0;
   private bestShareDifficultyWorker?: string;
   private bestShareDifficultyAt?: Date;
+  private bestShareNetworkDifficulty?: number;
   private lastTemplateFetchedAt?: Date;
   private lastTemplateError?: string;
 
@@ -175,6 +178,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     this.bestShareDifficultyAt = persisted.bestShareDifficultyAt
       ? new Date(persisted.bestShareDifficultyAt)
       : undefined;
+    this.bestShareNetworkDifficulty = persisted.bestShareNetworkDifficulty;
 
     this.server = net.createServer((socket) => this.handleConnection(socket));
     this.server.on('error', (err) =>
@@ -203,6 +207,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     this.bestShareDifficultyEver = 0;
     this.bestShareDifficultyWorker = undefined;
     this.bestShareDifficultyAt = undefined;
+    this.bestShareNetworkDifficulty = undefined;
     await this.persistStats();
   }
 
@@ -220,6 +225,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       bestShareDifficultyEver: this.bestShareDifficultyEver,
       bestShareDifficultyWorker: this.bestShareDifficultyWorker,
       bestShareDifficultyAt: this.bestShareDifficultyAt?.toISOString(),
+      bestShareNetworkDifficulty: this.bestShareNetworkDifficulty,
       lastTemplateFetchedAt: this.lastTemplateFetchedAt?.toISOString(),
       lastTemplateError: this.lastTemplateError,
       connectedWorkers: [...this.connections.values()]
@@ -746,6 +752,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       this.bestShareDifficultyEver = achievedDifficulty;
       this.bestShareDifficultyWorker = conn.workerName;
       this.bestShareDifficultyAt = new Date();
+      this.bestShareNetworkDifficulty = this.lastKnownDifficulty;
       this.logger.log(
         `🍀 New best share difficulty: ${achievedDifficulty.toExponential(3)} by ${conn.workerName}`,
       );
@@ -776,6 +783,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       bestShareDifficultyEver: this.bestShareDifficultyEver,
       bestShareDifficultyWorker: this.bestShareDifficultyWorker,
       bestShareDifficultyAt: this.bestShareDifficultyAt?.toISOString(),
+      bestShareNetworkDifficulty: this.bestShareNetworkDifficulty,
     });
   }
 

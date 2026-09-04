@@ -15,6 +15,8 @@ export interface PersistedPoolStats {
   bestShareDifficultyEver: number;
   bestShareDifficultyWorker?: string;
   bestShareDifficultyAt?: string;
+  /** Network difficulty at the moment bestShareDifficultyEver was found — lets the UI show "how big a swing" that share was against the target difficulty at the time, since network difficulty itself drifts over time. */
+  bestShareNetworkDifficulty?: number;
 }
 
 const logger = new Logger('PoolStatsStore');
