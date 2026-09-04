@@ -130,12 +130,13 @@
       margin-top: 10px;
       font-size: 0.95rem;
       color: var(--text-secondary);
-      box-shadow: 0 0 16px rgba(253, 206, 88, 0.12);
+      box-shadow: 0 0 12px rgba(253, 206, 88, 0.09);
     }
-    .best-share-banner .icon { font-size: 1.5em; vertical-align: middle; margin-right: 2px; filter: drop-shadow(0 0 4px rgba(253, 206, 88, 0.4)); }
-    .best-share-banner .value { color: var(--gold-2); font-weight: 700; font-size: 1.15em; text-shadow: 0 0 6px rgba(253, 206, 88, 0.35); }
+    .best-share-banner .bsb-row { display: flex; align-items: flex-start; gap: 6px; }
+    .best-share-banner .icon { font-size: 1.8em; line-height: 1; flex-shrink: 0; filter: drop-shadow(0 0 3px rgba(253, 206, 88, 0.3)); }
+    .best-share-banner .value,
     .best-share-banner .value-sub { color: var(--gold-2); font-weight: 600; }
-    .best-share-banner .meta-line { margin-top: 6px; margin-left: 1.75em; font-size: 0.85em; }
+    .best-share-banner .meta-line { margin-top: 6px; font-size: 0.85em; }
     .best-share-banner.hidden { display: none; }
 
     .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
@@ -608,9 +609,14 @@
           if (dateStr) metaParts.push(dateStr);
           banner.classList.remove('hidden');
           banner.innerHTML =
-            '<span class="icon">🍀</span> Pool\'s best share <span class="value">' + formatDifficulty(data.bestShareDifficultyEver) + '</span>' +
-            (atDifficulty ? ' / target <span class="value-sub">' + atDifficulty + '</span>' : '') +
-            (metaParts.length ? '<div class="meta-line">' + metaParts.join(' · ') + '</div>' : '');
+            '<div class="bsb-row">' +
+              '<span class="icon">🍀</span>' +
+              '<div>' +
+                'Pool\'s best share <span class="value">' + formatDifficulty(data.bestShareDifficultyEver) + '</span>' +
+                (atDifficulty ? ' / target <span class="value-sub">' + atDifficulty + '</span>' : '') +
+                (metaParts.length ? '<div class="meta-line">' + metaParts.join(' · ') + '</div>' : '') +
+              '</div>' +
+            '</div>';
         } else {
           banner.classList.add('hidden');
         }
