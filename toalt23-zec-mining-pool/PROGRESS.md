@@ -1,6 +1,6 @@
 # ZEC Mining Pool — Progress / Continuity Notes
 
-Last updated: 2026-09-02 (session with Claude). Read this before picking the
+Last updated: 2026-09-04 (session with Claude). Read this before picking the
 project back up — saves re-deriving context.
 
 ## What this app is
@@ -319,3 +319,68 @@ sudo docker run --rm --network umbrel_main_network \
    than for a multi-tenant service, so it's a nice-to-have hardening step,
    not urgent — revisit if this ever gets more exposed (e.g. shared beyond
    the user's own LAN).
+
+## UI restructuring + dashboard polish (2026-09-02 – 2026-09-04, 1.5.3 → 1.7.1)
+
+Driven entirely by live feedback from the user watching the real Z9 mini's
+dashboard — a long back-and-forth of small, specific tweaks rather than a
+planned redesign. Full blow-by-blow is in git log (`d19c3b4e..e0076a7a`);
+this is the settled end state, not a chronological account.
+
+- **Tabs, reordered and regrouped**: now **Miner → Node → Configuration**
+  (was just Node/Miner). Miner tab is the default/active one on load —
+  it's the one actually watched day to day. Tab-switching JS is generic
+  (`document.querySelectorAll('[id^="tab-"]')`, matched against
+  `data-tab`), so adding a 4th tab later needs no JS change.
+- **Configuration tab** (renamed once from "Setup") now holds everything
+  that used to clutter the Miner tab: "How to connect" (no longer a
+  collapsed `<details>` accordion — always visible now), mining payout
+  address + coinbase tag, and a new **"Pool's best share" reset button**
+  (`POST /api/pool/reset-best-share` → `StratumService.resetBestShare()`,
+  wipes `bestShareDifficultyEver`/`Worker`/`At`/`NetworkDifficulty`,
+  persisted immediately; does not touch `blocksFound` or per-worker
+  session stats).
+- **Custom confirm dialog**: the reset button no longer uses
+  `window.confirm()` — there's now a branded modal (`#confirmOverlay`,
+  small Z-logo + "ZEC Mining Node" header, Cancel/Reset buttons,
+  dismissable via backdrop click) driven by a generic
+  `showConfirmDialog(message)` helper (`Promise<boolean>`, same contract
+  as `confirm()`) — reuse this for any future destructive action instead
+  of a new one-off modal.
+- **Pool best-share banner**: moved above the worker list (it's pool-wide
+  meta info, grouped with Blocks Found/Workers/Verification, not
+  per-worker). Copy is now `Pool's best share <value> / target <value>`
+  on one line, `worker: <name> · <dd.mm.yy>` on a second line — laid out
+  as a flexbox row (icon + text column) specifically so the second line
+  aligns under the first regardless of emoji glyph width, rather than a
+  guessed `margin-left`. New `bestShareNetworkDifficulty` field (captured
+  alongside `bestShareDifficultyEver` in `stratum.service.ts`, persisted
+  the same way) shows what the network's target difficulty was *at the
+  moment* the record share was found — `bestShareDifficultyAt` is still
+  recorded too, just not the only thing shown anymore.
+- **Difficulty presets**: `low` went through several live retunings
+  against the real Z9 mini's observed share timing — 16 → 19 → 20 → **24**
+  (current). `medium`/`high` unchanged (128/256). Remember: the preset
+  table in `difficulty.ts` and the static copy in the Configuration tab's
+  "How to connect" list are **two separate places that don't sync
+  automatically** — this bit us once already (a preset bump updated the
+  code but not the copy). Update both together, or wire the copy to read
+  `DIFFICULTY_PRESETS` live if this keeps happening.
+- **Color/style conventions established**, worth keeping in mind for any
+  future UI work here:
+  - `--text-dim` (#888, washed-out gray) is now reserved for the inactive
+    tab buttons and the "Powered by" footer credit only. Everything else
+    that used to use it (stat labels, banner text, connect-guide copy,
+    config labels) now uses `--text-secondary` (#b8b8c2) instead — the
+    user's explicit rule: "grayed-out" should read as *inactive*, not as
+    the default look for normal text.
+  - A subtle glow motif (white `text-shadow` on worker hashrate/name, gold
+    `box-shadow`/`text-shadow` on the best-share banner) is used sparingly
+    for the two or three things meant to draw the eye — kept deliberately
+    soft after two rounds of "tone it down a bit" feedback. Don't crank
+    these back up without checking first.
+  - Buttons use gold **text on a dark background** (`var(--card-alt)` +
+    `var(--gold-2)` + a thin gold border), not a solid gold fill — a solid
+    fill read as "too loud" against the rest of the muted dark theme.
+    Destructive actions use the red-outline `.danger-button` variant
+    instead.
