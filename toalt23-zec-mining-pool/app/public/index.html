@@ -160,6 +160,7 @@
       font-family: inherit;
     }
     .config-row button:disabled { opacity: 0.6; cursor: default; }
+    .config-row button.danger-button { background: transparent; border: 1px solid var(--red); color: var(--red); }
     .config-msg { font-size: 0.78rem; margin-top: 8px; min-height: 1.1em; }
     .config-msg.error { color: var(--red); }
     .config-msg.success { color: var(--green); }
@@ -248,7 +249,7 @@
     <nav class="tabs">
       <button class="active" data-tab="miner">Miner</button>
       <button data-tab="node">Node</button>
-      <button data-tab="setup">Setup</button>
+      <button data-tab="configuration">Configuration</button>
     </nav>
 
     <section id="tab-miner" class="card">
@@ -296,7 +297,7 @@
       </div>
     </section>
 
-    <section id="tab-setup" class="card" style="display:none">
+    <section id="tab-configuration" class="card" style="display:none">
       <div class="connect-section">
         <div class="section-heading">How to connect</div>
         <ol>
@@ -333,6 +334,14 @@
           <button id="minerAddressSave">Save</button>
         </div>
         <div class="config-msg" id="minerAddressMsg"></div>
+      </div>
+
+      <div class="config-section">
+        <label>Pool best share record</label>
+        <div class="config-row">
+          <button id="resetBestShareBtn" class="danger-button">Reset best share</button>
+        </div>
+        <div class="config-msg" id="resetBestShareMsg"></div>
       </div>
     </section>
 
@@ -666,6 +675,38 @@
         }
       } catch (e) {
         setMinerAddressMsg('Could not reach the server.', 'error');
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    let resetBestShareMsgTimer = null;
+
+    function setResetBestShareMsg(text, kind) {
+      const msg = document.getElementById('resetBestShareMsg');
+      if (resetBestShareMsgTimer) clearTimeout(resetBestShareMsgTimer);
+      msg.textContent = text;
+      msg.className = 'config-msg' + (kind ? ' ' + kind : '');
+      if (kind === 'success') {
+        resetBestShareMsgTimer = setTimeout(() => {
+          msg.textContent = '';
+          msg.className = 'config-msg';
+        }, 6000);
+      }
+    }
+
+    document.getElementById('resetBestShareBtn').addEventListener('click', async () => {
+      if (!confirm('Reset the pool best share record? This cannot be undone.')) return;
+      const button = document.getElementById('resetBestShareBtn');
+      button.disabled = true;
+      setResetBestShareMsg('Resetting …', null);
+      try {
+        const res = await fetch('/api/pool/reset-best-share', { method: 'POST' });
+        if (!res.ok) throw new Error('request failed');
+        setResetBestShareMsg('Best share record reset', 'success');
+        updatePoolStatus();
+      } catch (e) {
+        setResetBestShareMsg('Could not reach the server.', 'error');
       } finally {
         button.disabled = false;
       }

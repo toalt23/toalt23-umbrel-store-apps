@@ -198,6 +198,14 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     for (const conn of this.connections.values()) conn.socket.destroy();
   }
 
+  /** Wipes the persisted pool-wide best-share record (user-triggered, e.g. to start a fresh "personal record" after tuning presets). Does not touch blocksFound or any per-worker session stats. */
+  async resetBestShare(): Promise<void> {
+    this.bestShareDifficultyEver = 0;
+    this.bestShareDifficultyWorker = undefined;
+    this.bestShareDifficultyAt = undefined;
+    await this.persistStats();
+  }
+
   getStatus(): PoolStatus {
     const now = Date.now();
     return {

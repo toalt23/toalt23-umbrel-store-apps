@@ -56,4 +56,10 @@ export class PoolController {
       : false;
     return { ok: true, changed, zakuraRestarted };
   }
+
+  @Post('reset-best-share')
+  async resetBestShare(): Promise<{ ok: true }> {
+    await this.stratumService.resetBestShare();
+    return { ok: true };
+  }
 }
