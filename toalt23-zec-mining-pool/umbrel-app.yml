@@ -4,7 +4,7 @@ name: ZEC Mining Node
 tagline: ZEC Mining Pool with Zakura full node
 icon: https://raw.githubusercontent.com/toalt23/toalt23-umbrel-store-apps/master/toalt23-zec-mining-pool/icon.svg
 category: Development
-version: "1.7.2"
+version: "1.7.3"
 port: 3000
 description: >-
  ZEC Mining Node provides solo-mining directly to your own Node.
@@ -19,12 +19,12 @@ gallery:
   - https://i.imgur.com/yyVG0Jb.jpeg
   - https://i.imgur.com/yyVG0Jb.jpeg
 releaseNotes: >-
-  Stop broadcasting a new mining job on mempool-only template refreshes —
-  only a genuine new block now triggers one. Solo mining gets no payoff
-  from fresher fee selection, so the old behavior was just forcing
-  frequent Equihash restarts on the miner for nothing (noticed as far
-  fewer getworks on 2Miners solo vs. our pool). Experimental: testing
-  live against the Z9 mini to see if effective Sols/s improves.
+  Every rejected-share reason (duplicate, stale job, low difficulty,
+  malformed submission, invalid solution, etc.) now shows up in the
+  stratum log, not just as a bumped dashboard counter — useful for
+  watching the effect of the previous release's job-churn change live.
+  Also fixed a stale "low (16)" comment in docker-compose.yml — the
+  actual low-difficulty preset has been 24 for a while.
 dependencies: []
 path: ""
 defaultUsername: ""

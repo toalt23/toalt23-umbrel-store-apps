@@ -614,27 +614,54 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     return presetByKey(normalized) ? normalized : DEFAULT_PRESET_KEY;
   }
 
+  /**
+   * Every handleSubmit() reject path routes through here so all of them are
+   * equally visible in the log (previously most reject reasons only showed
+   * up indirectly as a bumped rejectedShares/staleShares counter in the
+   * dashboard — see PROGRESS.md, added 2026-09-08 while chasing the job-churn
+   * change). `debug` for routine/expected rejects that need no attention
+   * (a share racing a job change, an ASIC occasionally submitting below its
+   * assigned target), `warn` for anything shaped like a protocol violation
+   * or bug, worth noticing if it happens a lot.
+   */
+  private logReject(
+    level: 'debug' | 'warn',
+    conn: WorkerConnection,
+    jobId: string | undefined,
+    reason: string,
+  ) {
+    const who = conn.workerName ?? `session ${conn.sessionId}`;
+    const jobPart = jobId ? ` (job ${jobId})` : '';
+    this.logger[level](`Rejected submit from ${who}${jobPart}: ${reason}`);
+  }
+
   private handleSubmit(conn: WorkerConnection, id: unknown, params: unknown[]) {
-    if (!conn.subscribed)
+    if (!conn.subscribed) {
+      this.logReject('warn', conn, undefined, 'not subscribed');
       return this.sendError(conn, id, ERR_NOT_SUBSCRIBED, 'Not subscribed');
-    if (!conn.workerName)
+    }
+    if (!conn.workerName) {
+      this.logReject('warn', conn, undefined, 'unauthorized worker');
       return this.sendError(
         conn,
         id,
         ERR_UNAUTHORIZED_WORKER,
         'Unauthorized worker',
       );
+    }
 
     const [, jobId, timeHex, nonce2Hex, solutionHex] = params as (
       string | undefined
     )[];
     if (!jobId || !timeHex || !nonce2Hex || !solutionHex) {
+      this.logReject('warn', conn, jobId, 'malformed submission (missing params)');
       return this.sendError(conn, id, ERR_OTHER, 'Malformed submission');
     }
 
     const job = this.jobs.get(jobId);
     if (!job) {
       conn.staleShares++;
+      this.logReject('debug', conn, jobId, 'stale job (job not found)');
       return this.sendError(
         conn,
         id,
@@ -651,6 +678,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       solutionWithPrefix = Buffer.from(solutionHex, 'hex');
       timeBytes = Buffer.from(timeHex, 'hex');
     } catch {
+      this.logReject('warn', conn, jobId, 'malformed submission encoding');
       return this.sendError(
         conn,
         id,
@@ -661,12 +689,19 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
 
     const expectedNonce2Len = 32 - conn.nonce1.length;
     if (nonce2.length !== expectedNonce2Len || timeBytes.length !== 4) {
+      this.logReject(
+        'warn',
+        conn,
+        jobId,
+        `malformed submission length (nonce2=${nonce2.length}B, expected ${expectedNonce2Len}B; time=${timeBytes.length}B, expected 4B)`,
+      );
       return this.sendError(conn, id, ERR_OTHER, 'Malformed submission length');
     }
 
     const dedupeKey = `${nonce2Hex}:${timeHex}`;
     if (job.seen.has(dedupeKey)) {
       conn.rejectedShares++;
+      this.logReject('debug', conn, jobId, 'duplicate share');
       return this.sendError(conn, id, ERR_DUPLICATE_SHARE, 'Duplicate share');
     }
     job.seen.add(dedupeKey);
@@ -680,12 +715,10 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
         nonceBytes,
       );
     } catch (error) {
-      return this.sendError(
-        conn,
-        id,
-        ERR_OTHER,
-        error instanceof Error ? error.message : 'Header assembly failed',
-      );
+      const message =
+        error instanceof Error ? error.message : 'Header assembly failed';
+      this.logReject('warn', conn, jobId, `header assembly failed — ${message}`);
+      return this.sendError(conn, id, ERR_OTHER, message);
     }
     const fullHeader = assembleFullHeader(
       headerWithoutSolution,
@@ -695,6 +728,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
 
     if (hash > conn.currentTarget) {
       conn.rejectedShares++;
+      this.logReject('debug', conn, jobId, 'low difficulty share');
       return this.sendError(
         conn,
         id,
@@ -710,6 +744,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
         solutionBody = solutionWithPrefix.subarray(bytesRead);
       } catch {
         conn.rejectedShares++;
+        this.logReject('warn', conn, jobId, 'malformed solution encoding');
         return this.sendError(
           conn,
           id,
@@ -725,13 +760,12 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
           `equihashverify threw: ${error instanceof Error ? error.message : error}`,
         );
         conn.rejectedShares++;
+        this.logReject('warn', conn, jobId, 'verification error');
         return this.sendError(conn, id, ERR_OTHER, 'Verification error');
       }
       if (!valid) {
         conn.rejectedShares++;
-        this.logger.warn(
-          `Rejected invalid Equihash solution from worker ${conn.workerName}`,
-        );
+        this.logReject('warn', conn, jobId, 'invalid Equihash solution');
         return this.sendError(conn, id, ERR_OTHER, 'Invalid Equihash solution');
       }
     } else {

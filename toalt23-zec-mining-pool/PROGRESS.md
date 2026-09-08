@@ -426,3 +426,23 @@ Sols/s (Antminer dashboard) before/after against the real Z9 mini. If it
 doesn't measurably help, safe to revert — this is a pure job-broadcast
 filter, doesn't touch template fetching, share validation, or the
 block-submit path.
+
+**Follow-up, 1.7.3 — reject-reason logging.** While setting up to watch the
+above live, noticed `handleSubmit()`'s reject paths were mostly silent in
+the log: only "Invalid Equihash solution" and a verify-threw crash actually
+called `logger.warn`/`.error` — duplicate share, stale job, low-difficulty
+share, and every malformed-submission case only bumped a
+`rejectedShares`/`staleShares` counter, visible in the dashboard but not
+traceable in real time. Added a shared `logReject()` helper so every path
+now logs consistently (`debug` for routine/expected rejects — duplicate,
+stale-job, low-difficulty; `warn` for anything protocol-violation-shaped —
+malformed params/encoding/length, header-assembly failure, unauthorized/
+not-subscribed). Counter behavior is unchanged (including the pre-existing
+minor inconsistency that a header-assembly failure still doesn't increment
+`rejectedShares` — noted, not fixed, out of scope for this pass).
+
+Also fixed while here: `docker-compose.yml`'s `POOL_SHARE_DIFFICULTY_PRESET`
+comment still said `low (16)` — stale, the actual preset (`difficulty.ts`)
+has been 24 since the live-tuning rounds noted above. Comment now matches;
+`difficulty.ts` and the Configuration tab's "How to connect" copy were
+already correct at 24, so no code-behavior change here, just the comment.
