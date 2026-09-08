@@ -384,3 +384,45 @@ this is the settled end state, not a chronological account.
     fill read as "too loud" against the rest of the muted dark theme.
     Destructive actions use the red-outline `.danger-button` variant
     instead.
+
+## Job-churn reduction experiment (2026-09-08, 1.7.1 → 1.7.2, live-testing)
+
+Triggered by the user noticing the real Z9 mini logs far fewer getworks
+when pointed at 2Miners solo than at our own pool. Root cause traced back
+to the very thing item 2 above confirmed on 2026-08-29: our longpoll
+unblocks on mempool-only refreshes too, and `applyTemplate()`'s `changed`
+check treated any merkleroot move as "changed" — so every mempool-only
+refresh (observed firing every 5-30s even with 0 miners connected) was
+broadcasting a real `mining.notify` to every connected worker, forcing an
+Equihash restart on the ASIC side each time. For a solo pool that's pure
+cost with no upside: fresher fee selection only pays off on a shared/PPLNS
+pool, never here (full block reward goes to whoever finds it regardless of
+which txs got included).
+
+**Change made:** `applyTemplate()` in `stratum.service.ts` now only treats
+a `previousblockhash` change as "changed" — a merkleroot-only move (same
+tip) is logged at debug and otherwise ignored, no broadcast. `cleanJobs` is
+now unconditionally `true` since every remaining broadcast is by
+definition a new tip. The longpoll loop itself is untouched — it still
+re-issues with the fresh `longpollid` every round either way, so this
+doesn't change polling behavior, only whether a mempool-only round result
+gets pushed to miners.
+
+**Checked before making this change, both confirmed non-issues:**
+- *Does the miner run out of work between real blocks (~75s avg for
+  ZEC)?* No — `nonce1` is only 4 bytes (`stratum.service.ts`'s
+  `nonce1Counter`), leaving the miner a full 28-byte `nonce2` space
+  (2^224) to search freely, plus it supplies its own `timeHex` per share
+  on `mining.submit` rather than being locked to the job's `time` field.
+  At the Z9 mini's ~14 kSol/s that's ~1.05M attempts over 75s — negligible
+  against 2^224, no exhaustion risk at any realistic timescale.
+- *Does holding a stale template for minutes break header validity?*
+  No — Zcash's timestamp rule is a floor only (must exceed the median of
+  the last 11 blocks), no freshness ceiling that a few stale minutes could
+  violate.
+
+**Status: live-testing, not yet confirmed.** Deployed to compare effective
+Sols/s (Antminer dashboard) before/after against the real Z9 mini. If it
+doesn't measurably help, safe to revert — this is a pure job-broadcast
+filter, doesn't touch template fetching, share validation, or the
+block-submit path.
