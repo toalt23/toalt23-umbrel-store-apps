@@ -446,3 +446,60 @@ comment still said `low (16)` — stale, the actual preset (`difficulty.ts`)
 has been 24 since the live-tuning rounds noted above. Comment now matches;
 `difficulty.ts` and the Configuration tab's "How to connect" copy were
 already correct at 24, so no code-behavior change here, just the comment.
+
+## Miner disconnects after 1.7.2 — diagnosis, two fixes tried, one kept (2026-09-10, 1.7.3 → 1.7.5)
+
+User reported two connection drops since 1.7.2 shipped, unsure whether
+miner/network or pool-side. First hypothesis (wrong, see below): 1.7.2
+stopped broadcasting on mempool-only refreshes, so the socket now goes
+quiet for the full block interval instead of getting incidental traffic
+every 5-30s — with `socket.setKeepAlive(true)` never given an explicit
+interval (Linux default ~2h), a NAT/firewall idle timeout could silently
+kill the mapping. Fixed that regardless as good practice, kept in 1.7.5:
+`stratum.service.ts` now calls `socket.setKeepAlive(true, 30000)` — also
+closes the pre-existing "worker stays listed for hours after an
+ungraceful drop" gap from 2026-09-02, since a dead peer is now detected
+in ~30s instead of the OS default. (1.7.4 also tuned the `low` difficulty
+preset from 24 to 50 for the Z9 mini — unrelated, bundled in the same
+release.)
+
+**Then real logs came in (1.7.3 in the field) and disproved the NAT
+theory.** Four disconnect/reconnect cycles in ~20 minutes, not two.
+Each one: `Miner disconnected` immediately followed, same log timestamp,
+by `Miner connected` from the *same* IP with the *next* sequential
+source port (57632 → 57634 → 57636 → 57638). That's the Z9 mini itself
+actively closing and reopening the TCP connection, not a silent NAT
+death (which the server wouldn't notice this promptly, and wouldn't see
+an immediate clean reconnect from the same source). Session uptime
+before each disconnect varied a lot (3m54s, 6m17s, 4m03s), but the gap
+between the *last real job broadcast* and the disconnect was tight and
+consistent every time: 2m15s, 1m34s, 1m57s, 1m47s. That points at a
+no-new-work watchdog in the firmware — unsurprising, since every pool
+this device has ever talked to (until 1.7.2) pushed a job at least every
+5-30s; going quiet for minutes at a time between real blocks is new
+behavior from our side.
+
+**Tried and reverted: a 60s job heartbeat.** Re-sent the unchanged
+current job with `clean_jobs=false` whenever 60s passed without a real
+broadcast — comfortable margin under the observed ~90-135s window,
+chosen over resending with `clean_jobs=true` (or the user's initial idea
+of a full job rebuild every ~25s) specifically to avoid reintroducing
+the Equihash-restart churn 1.7.2 removed. Built, but never deployed:
+whether the Z9 mini's firmware actually treats a same-id
+`clean_jobs=false` resend as a no-op rather than a fresh job to switch
+to was unverified, and the user decided not to ship an unconfirmed
+partial fix — reverted before pushing.
+
+**Final call: revert 1.7.2 entirely.** Back to broadcasting on every
+template change, mempool-only refreshes included (`applyTemplate()`'s
+`changed` check is previousblockhash-or-merkleroot again, same as
+pre-1.7.2 — see that commit, `5cfb1e63`, for the original code this
+restores). Trades back the Sols/s cost from frequent Equihash restarts
+in exchange for the simpler, previously-proven-stable connection
+behavior — the user's call, given the heartbeat alternative was
+unverified and the disconnects are a worse problem than the churn.
+**If this ever gets revisited:** the real fix is probably a verified
+`clean_jobs=false` heartbeat (tune the interval against whatever the Z9
+mini's actual watchdog threshold turns out to be) rather than reopening
+1.7.2's throttling — but that needs live confirmation it doesn't itself
+trigger restarts before it's worth trying again.

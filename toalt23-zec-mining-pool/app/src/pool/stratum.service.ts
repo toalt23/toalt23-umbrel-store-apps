@@ -375,38 +375,41 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     this.lastTemplateFetchedAt = new Date();
 
     const prevJob = this.currentJob;
-    // Solo pool: there's no revenue reason to rebuild the job just because
-    // the node's mempool selection moved (the full block reward goes to
-    // whoever finds it either way — no PPLNS fee-optimization payoff like a
-    // shared pool has). Broadcasting anyway just churns the ASIC: every
-    // pushed job forces an Equihash restart on the miner side, which costs
-    // real settle/reload time on hardware like the Z9 mini and was
-    // measurably cutting into its effective Sols/s (discussed 2026-09-08,
-    // prompted by 2Miners solo showing far fewer getworks than us). So only
-    // a genuine new tip counts as "changed" here — a merkleroot move with
-    // the same previousblockhash is a mempool-only refresh and is
-    // deliberately left unbroadcast; the stale-but-still-valid template
-    // just keeps mining until either a real new block arrives or (rarely)
-    // it's picked up fresh right before a submit.
-    const newTip =
-      !prevJob || prevJob.template.previousblockhash !== template.previousblockhash;
-    if (!newTip) {
+    // Broadcast on every template change, including mempool-only refreshes
+    // (not just a new previousblockhash) — reverted 2026-09-10 back to this
+    // pre-1.7.2 behavior. 1.7.2 (2026-09-08) throttled this to new-tip-only
+    // to stop forcing an Equihash restart on every mempool refresh, which
+    // measurably helped Sols/s — but live logs on 2026-09-10 showed the Z9
+    // mini's own firmware disconnecting/reconnecting when it went too long
+    // (~90-135s) without a fresh mining.notify, i.e. a no-new-work
+    // watchdog. A 60s job-heartbeat was tried as a middle ground but never
+    // confirmed not to itself force a restart, and the user decided the
+    // simpler, previously-proven-stable behavior (frequent notifies) is
+    // preferable to an unverified partial fix. See PROGRESS.md for the
+    // full history if this needs revisiting.
+    const changed =
+      !prevJob ||
+      prevJob.template.previousblockhash !== template.previousblockhash ||
+      prevJob.template.defaultroots?.merkleroot !==
+        template.defaultroots?.merkleroot;
+    if (!changed) {
+      // Only notable for 'longpoll': it resolved but nothing actually
+      // changed, which — if it happens right away rather than after a
+      // long block-sized wait — is a sign the node isn't really blocking
+      // on longpollid (see PROGRESS.md's open validation item). Expected
+      // and unremarkable for 'poll', which always fetches a live
+      // snapshot regardless of whether it changed.
       if (source === 'longpoll') {
-        const merklerootMoved =
-          prevJob?.template.defaultroots?.merkleroot !==
-          template.defaultroots?.merkleroot;
         this.logger.debug(
-          merklerootMoved
-            ? 'Long-poll resolved with a mempool-only refresh — ignored (solo pool, no job churn for fee optimization).'
-            : 'Long-poll resolved with no actual template change (unexpected unless it was a long wait).',
+          'Long-poll resolved with no actual template change (unexpected unless it was a long wait).',
         );
       }
       return;
     }
 
-    // We only reach here on a genuine new tip, so every job broadcast from
-    // this point on is a clean restart.
-    const cleanJobs = true;
+    const cleanJobs =
+      !prevJob ||
+      prevJob.template.previousblockhash !== template.previousblockhash;
 
     let difficulty = this.lastKnownDifficulty;
     try {
@@ -447,10 +450,9 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     this.jobs.set(jobId, job);
     this.pruneOldJobs();
 
-    // Always a new-block job now — mempool-only refreshes return early above
-    // and never reach this broadcast.
+    const reason = cleanJobs ? 'new block' : 'mempool refresh, same block';
     this.logger.log(
-      `New job ${jobId} via ${source} (new block) — height ${template.height}, ` +
+      `New job ${jobId} via ${source} (${reason}) — height ${template.height}, ` +
         `${this.connections.size} connection(s), clean_jobs=${cleanJobs}`,
     );
 
