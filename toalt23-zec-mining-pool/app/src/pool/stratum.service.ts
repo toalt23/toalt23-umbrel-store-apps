@@ -499,7 +499,13 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     );
 
     socket.setEncoding('utf8');
-    socket.setKeepAlive(true);
+    // Explicit interval (not just setKeepAlive(true), which leaves it at the
+    // OS default — ~2h on Linux): keeps NAT/firewall idle-connection state
+    // alive between real job broadcasts now that 1.7.2 stopped pushing a
+    // mining.notify on every mempool-only refresh, and also means a dead
+    // peer (power loss, cable pull) is detected in ~30s instead of staying
+    // listed in the dashboard for hours.
+    socket.setKeepAlive(true, 30000);
     socket.on('data', (chunk: string) => this.handleData(conn, chunk));
     socket.on('close', () => {
       this.connections.delete(sessionId);
