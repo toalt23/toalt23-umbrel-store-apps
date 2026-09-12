@@ -379,7 +379,7 @@
           <li>
             Password sets the share difficulty:
             <ul>
-              <li><code>low</code> — diff 50 (Z9 mini)</li>
+              <li><code>low</code> — diff 32 (Z9 mini)</li>
               <li><code>medium</code> — diff 128, default (Z11)</li>
               <li><code>high</code> — diff 256 (Z15/Z15 Pro)</li>
             </ul>
@@ -448,6 +448,28 @@
   </div>
 
   <script>
+    // The Pool tab's worker list (and its charts) gets rebuilt by the 10s
+    // poll regardless of which tab is currently showing. Drawing a chart
+    // while its canvas sits inside a display:none section reads
+    // clientWidth as 0, so it falls back to a guessed width — when the tab
+    // becomes visible again the canvas's actual CSS width no longer
+    // matches the bitmap resolution it was drawn at, and the browser
+    // stretches it, which is the blur/scale glitch. Fix: skip drawing
+    // while hidden, and force one correct-sized redraw the moment the tab
+    // becomes visible again instead of waiting for the next poll tick.
+    function isPoolTabVisible() {
+      const section = document.getElementById('tab-miner');
+      return !!section && section.style.display !== 'none';
+    }
+
+    function redrawExpandedWorkerCharts() {
+      document.querySelectorAll('#workerList .worker-row').forEach((row) => {
+        const chartBox = row.querySelector('.worker-chart');
+        if (!chartBox || chartBox.classList.contains('hidden')) return;
+        loadWorkerChart(row.dataset.worker, row, row.dataset.preset);
+      });
+    }
+
     document.querySelectorAll('nav.tabs button').forEach((btn) => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('nav.tabs button').forEach((b) => b.classList.remove('active'));
@@ -455,6 +477,7 @@
         document.querySelectorAll('[id^="tab-"]').forEach((section) => {
           section.style.display = section.id === 'tab-' + btn.dataset.tab ? 'block' : 'none';
         });
+        if (btn.dataset.tab === 'miner') redrawExpandedWorkerCharts();
       });
     });
 
@@ -900,6 +923,8 @@
           data.connectedWorkers.forEach((w) => {
             const row = document.createElement('div');
             row.className = 'worker-row';
+            row.dataset.worker = w.workerName;
+            row.dataset.preset = w.presetKey;
             const chartState = getWorkerChartState(w.workerName);
             row.innerHTML =
               '<div class="worker-top">' +
@@ -943,7 +968,7 @@
                 loadWorkerChart(w.workerName, row, w.presetKey);
               });
             });
-            if (chartState.expanded) loadWorkerChart(w.workerName, row, w.presetKey);
+            if (chartState.expanded && isPoolTabVisible()) loadWorkerChart(w.workerName, row, w.presetKey);
           });
         }
 
