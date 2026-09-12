@@ -126,8 +126,9 @@
 
     .worker-chart-toggle {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
+      gap: 6px;
       margin-top: 8px;
       padding-top: 8px;
       border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -136,8 +137,8 @@
       cursor: pointer;
       user-select: none;
     }
-    .worker-chart-toggle .chevron { font-size: 0.7rem; }
-    .worker-chart { margin-top: 8px; }
+    .worker-chart-toggle .chevron { font-size: 1rem; }
+    .worker-chart { margin-top: 16px; }
     .worker-chart.hidden { display: none; }
     .chart-range-row { display: flex; gap: 6px; margin-bottom: 6px; }
     .chart-range-btn {
@@ -150,7 +151,7 @@
       cursor: pointer;
     }
     .chart-range-btn.active { border-color: var(--gold-2); color: var(--gold-2); }
-    .chart-canvas { width: 100%; height: 64px; display: block; }
+    .chart-canvas { width: 100%; height: 96px; display: block; }
 
     .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
     .config-section label { display: block; font-size: 1rem; color: var(--text-secondary); margin-bottom: 6px; }
@@ -318,12 +319,12 @@
       </div>
       <div id="minerContent" class="hidden">
         <div class="stats">
-          <div class="stat"><div class="stat-label">Blocks Found</div><div class="stat-value" id="blocksFound">–</div></div>
-          <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
-          <div class="stat"><div class="stat-label">Pool Hashrate</div><div class="stat-value" id="poolHashrate">–</div></div>
-          <div class="stat"><div class="stat-label">Pool's Best Share</div><div class="stat-value" id="bestShareValue">–</div><div class="stat-sub" id="bestShareSub"></div></div>
           <div class="stat"><div class="stat-label">Network Hashrate</div><div class="stat-value" id="minerNetworkHashrate">–</div></div>
           <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="minerDifficulty">–</div></div>
+          <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
+          <div class="stat"><div class="stat-label">Pool Hashrate</div><div class="stat-value" id="poolHashrate">–</div></div>
+          <div class="stat"><div class="stat-label">Blocks Found</div><div class="stat-value" id="blocksFound">–</div></div>
+          <div class="stat"><div class="stat-label">Pool's Best Share</div><div class="stat-value" id="bestShareValue">–</div><div class="stat-sub" id="bestShareSub"></div></div>
         </div>
         <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
       </div>
@@ -359,7 +360,7 @@
       <div class="connect-section">
         <div class="section-heading">How to connect</div>
         <ol>
-          <li>Set the payout address and save (your wallet address); coinbase tag is optional.</li>
+          <li>Set the payout address and save (coinbase tag optional).</li>
           <li>Point your miner at this node's IP, port <code id="connectPort">–</code>.</li>
           <li>Worker name: anything, e.g. <code>rig1</code>.</li>
           <li>
@@ -608,13 +609,19 @@
       return formatShortNumber(d);
     }
 
-    function formatDateDDMMYY(iso) {
+    // Fixed to Europe/Berlin regardless of the viewing device's own timezone
+    // — this is a single-user dashboard and the user wants record timestamps
+    // in their own local time no matter where the browser happens to run.
+    function formatDateTimeBerlin(iso) {
       if (!iso) return null;
-      const d = new Date(iso);
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const yy = String(d.getFullYear()).slice(-2);
-      return dd + '.' + mm + '.' + yy;
+      return new Date(iso).toLocaleString('de-DE', {
+        timeZone: 'Europe/Berlin',
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
     }
 
     // Per-worker chart UI state (expanded/collapsed + selected range), kept
@@ -626,6 +633,18 @@
     const workerChartState = {};
     const HASHRATE_CHART_RANGES = ['15m', '1h', '8h'];
 
+    // Default/typical Sol/s span per difficulty preset, used as the chart's
+    // starting Y-axis range (in Sol/s — history samples are stored raw, same
+    // as everywhere else; formatKSolShort below converts for display). The
+    // axis adapts beyond this if a worker's actual hashrate goes outside it,
+    // so a real outlier is never clipped — this is just where the gridlines
+    // start out for a typical worker on that preset (e.g. low ~ Z9 mini).
+    const HASHRATE_PRESET_RANGES = {
+      low: { min: 5000, max: 35000 },
+      medium: { min: 50000, max: 150000 },
+      high: { min: 300000, max: 880000 },
+    };
+
     function getWorkerChartState(workerName) {
       if (!workerChartState[workerName]) {
         workerChartState[workerName] = { expanded: false, range: '15m' };
@@ -633,7 +652,7 @@
       return workerChartState[workerName];
     }
 
-    async function loadWorkerChart(workerName, row) {
+    async function loadWorkerChart(workerName, row, presetKey) {
       const state = getWorkerChartState(workerName);
       const canvas = row.querySelector('.chart-canvas');
       if (!canvas) return;
@@ -643,37 +662,92 @@
           '&range=' + state.range,
         );
         const points = await res.json();
-        drawHashrateChart(canvas, points);
+        drawHashrateChart(canvas, points, presetKey);
       } catch {
         // Best-effort — leave whatever the canvas last showed.
       }
     }
 
-    function drawHashrateChart(canvas, points) {
+    function formatKSolShort(solPerSecond) {
+      return Math.round(solPerSecond / 1000) + 'k';
+    }
+
+    function formatTimeBerlinShort(t) {
+      return new Date(t).toLocaleTimeString('de-DE', {
+        timeZone: 'Europe/Berlin',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+
+    function drawHashrateChart(canvas, points, presetKey) {
       const cssWidth = canvas.clientWidth || 260;
-      const cssHeight = 64;
+      const cssHeight = 96;
       const dpr = window.devicePixelRatio || 1;
       canvas.width = cssWidth * dpr;
       canvas.height = cssHeight * dpr;
+      canvas.style.height = cssHeight + 'px';
       const ctx = canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssWidth, cssHeight);
+      ctx.font = '9px -apple-system, sans-serif';
+
+      const leftPad = 30;
+      const rightPad = 4;
+      const topPad = 6;
+      const bottomPad = 14;
+      const plotWidth = cssWidth - leftPad - rightPad;
+      const plotHeight = cssHeight - topPad - bottomPad;
 
       if (!points || points.length < 2) {
         ctx.fillStyle = 'rgba(184, 184, 194, 0.7)';
-        ctx.font = '11px -apple-system, sans-serif';
-        ctx.fillText('Collecting data…', 6, cssHeight / 2);
+        ctx.fillText('Collecting data…', leftPad, cssHeight / 2);
         return;
       }
 
-      const pad = 4;
-      const maxHr = Math.max(...points.map((p) => p.hr), 0.0001);
+      const preset = HASHRATE_PRESET_RANGES[presetKey] || HASHRATE_PRESET_RANGES.medium;
+      const hrs = points.map((p) => p.hr);
+      const axisMin = Math.min(preset.min, ...hrs);
+      const axisMax = Math.max(preset.max, ...hrs);
+      const axisRange = Math.max(axisMax - axisMin, 1);
       const minT = points[0].t;
       const spanT = Math.max(points[points.length - 1].t - minT, 1);
+
+      const yToPixel = (hr) => topPad + plotHeight - ((hr - axisMin) / axisRange) * plotHeight;
+      const xToPixel = (t) => leftPad + ((t - minT) / spanT) * plotWidth;
+
+      // Y-axis: 4 gridlines + kSol/s labels on the left.
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 1;
+      ctx.fillStyle = 'rgba(184, 184, 194, 0.75)';
+      const Y_TICKS = 4;
+      for (let i = 0; i < Y_TICKS; i++) {
+        const value = axisMin + (axisRange * i) / (Y_TICKS - 1);
+        const y = yToPixel(value);
+        ctx.beginPath();
+        ctx.moveTo(leftPad, y);
+        ctx.lineTo(cssWidth - rightPad, y);
+        ctx.stroke();
+        ctx.fillText(formatKSolShort(value), 0, Math.min(Math.max(y + 3, 8), cssHeight - bottomPad));
+      }
+
+      // X-axis: 5 evenly-spaced time-of-day labels (Berlin), no date.
+      const X_TICKS = 5;
+      for (let i = 0; i < X_TICKS; i++) {
+        const t = minT + (spanT * i) / (X_TICKS - 1);
+        const x = xToPixel(t);
+        const label = formatTimeBerlinShort(t);
+        const labelX = i === 0 ? leftPad
+          : i === X_TICKS - 1 ? cssWidth - rightPad - ctx.measureText(label).width
+          : x - ctx.measureText(label).width / 2;
+        ctx.fillText(label, labelX, cssHeight - 2);
+      }
+
+      // Hashrate line.
       ctx.beginPath();
       points.forEach((p, i) => {
-        const x = pad + ((p.t - minT) / spanT) * (cssWidth - pad * 2);
-        const y = cssHeight - pad - (p.hr / maxHr) * (cssHeight - pad * 2);
+        const x = xToPixel(p.t);
+        const y = yToPixel(p.hr);
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
       ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--gold-2').trim() || '#fdce58';
@@ -752,7 +826,7 @@
                 '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) + '</div>' +
               '</div>' +
               '<div class="worker-chart-toggle">' +
-                '<span>Hashrate chart</span>' +
+                '<span>More details</span>' +
                 '<span class="chevron">' + (chartState.expanded ? '▴' : '▾') + '</span>' +
               '</div>' +
               '<div class="worker-chart' + (chartState.expanded ? '' : ' hidden') + '">' +
@@ -771,32 +845,32 @@
               chartState.expanded = !chartState.expanded;
               chartBox.classList.toggle('hidden', !chartState.expanded);
               toggle.querySelector('.chevron').textContent = chartState.expanded ? '▴' : '▾';
-              if (chartState.expanded) loadWorkerChart(w.workerName, row);
+              if (chartState.expanded) loadWorkerChart(w.workerName, row, w.presetKey);
             });
             row.querySelectorAll('.chart-range-btn').forEach((btn) => {
               btn.addEventListener('click', () => {
                 chartState.range = btn.dataset.range;
                 row.querySelectorAll('.chart-range-btn').forEach((b) => b.classList.toggle('active', b === btn));
-                loadWorkerChart(w.workerName, row);
+                loadWorkerChart(w.workerName, row, w.presetKey);
               });
             });
-            if (chartState.expanded) loadWorkerChart(w.workerName, row);
+            if (chartState.expanded) loadWorkerChart(w.workerName, row, w.presetKey);
           });
         }
 
-        document.getElementById('bestShareValue').textContent =
-          data.bestShareDifficultyEver > 0 ? formatDifficulty(data.bestShareDifficultyEver) : '–';
         if (data.bestShareDifficultyEver > 0) {
           const atDifficulty = data.bestShareNetworkDifficulty != null
             ? formatDifficulty(data.bestShareNetworkDifficulty)
             : null;
-          const dateStr = formatDateDDMMYY(data.bestShareDifficultyAt);
+          document.getElementById('bestShareValue').textContent =
+            formatDifficulty(data.bestShareDifficultyEver) + (atDifficulty ? ' / ' + atDifficulty : '');
+          const dateTimeStr = formatDateTimeBerlin(data.bestShareDifficultyAt);
           const subParts = [];
-          if (atDifficulty) subParts.push('target ' + atDifficulty);
           if (data.bestShareDifficultyWorker) subParts.push(data.bestShareDifficultyWorker);
-          if (dateStr) subParts.push(dateStr);
+          if (dateTimeStr) subParts.push(dateTimeStr);
           document.getElementById('bestShareSub').textContent = subParts.join(' · ');
         } else {
+          document.getElementById('bestShareValue').textContent = '–';
           document.getElementById('bestShareSub').textContent = '';
         }
 
