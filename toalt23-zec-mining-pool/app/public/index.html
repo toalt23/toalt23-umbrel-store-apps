@@ -129,7 +129,7 @@
       justify-content: flex-start;
       align-items: center;
       gap: 6px;
-      margin-top: 8px;
+      margin-top: 14px;
       padding-top: 8px;
       border-top: 1px solid rgba(255, 255, 255, 0.06);
       font-size: 0.76rem;
@@ -137,7 +137,7 @@
       cursor: pointer;
       user-select: none;
     }
-    .worker-chart-toggle .chevron { font-size: 1rem; }
+    .worker-chart-toggle .chevron { font-size: 1.2rem; color: var(--gold-2); }
     .worker-chart { margin-top: 16px; }
     .worker-chart.hidden { display: none; }
     .chart-range-row { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -152,6 +152,19 @@
     }
     .chart-range-btn.active { border-color: var(--gold-2); color: var(--gold-2); }
     .chart-canvas { width: 100%; height: 96px; display: block; }
+    .chart-tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: var(--card);
+      border: 1px solid var(--gold-2);
+      color: var(--text);
+      font-size: 0.72rem;
+      padding: 3px 7px;
+      border-radius: 6px;
+      white-space: nowrap;
+      z-index: 1000;
+      display: none;
+    }
 
     .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
     .config-section label { display: block; font-size: 1rem; color: var(--text-secondary); margin-bottom: 6px; }
@@ -303,7 +316,7 @@
     </div>
 
     <nav class="tabs">
-      <button class="active" data-tab="miner">Miner</button>
+      <button class="active" data-tab="miner">Pool</button>
       <button data-tab="node">Node</button>
       <button data-tab="configuration">Configuration</button>
     </nav>
@@ -321,10 +334,10 @@
         <div class="stats">
           <div class="stat"><div class="stat-label">Network Hashrate</div><div class="stat-value" id="minerNetworkHashrate">–</div></div>
           <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="minerDifficulty">–</div></div>
-          <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
           <div class="stat"><div class="stat-label">Pool Hashrate</div><div class="stat-value" id="poolHashrate">–</div></div>
+          <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
+          <div class="stat"><div class="stat-label">Pool's Best Share</div><div class="stat-value" id="bestShareValue">–</div></div>
           <div class="stat"><div class="stat-label">Blocks Found</div><div class="stat-value" id="blocksFound">–</div></div>
-          <div class="stat"><div class="stat-label">Pool's Best Share</div><div class="stat-value" id="bestShareValue">–</div><div class="stat-sub" id="bestShareSub"></div></div>
         </div>
         <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
       </div>
@@ -366,7 +379,7 @@
           <li>
             Password sets the share difficulty:
             <ul>
-              <li><code>low</code> — diff 24 (Z9 mini)</li>
+              <li><code>low</code> — diff 50 (Z9 mini)</li>
               <li><code>medium</code> — diff 128, default (Z11)</li>
               <li><code>high</code> — diff 256 (Z15/Z15 Pro)</li>
             </ul>
@@ -609,21 +622,6 @@
       return formatShortNumber(d);
     }
 
-    // Fixed to Europe/Berlin regardless of the viewing device's own timezone
-    // — this is a single-user dashboard and the user wants record timestamps
-    // in their own local time no matter where the browser happens to run.
-    function formatDateTimeBerlin(iso) {
-      if (!iso) return null;
-      return new Date(iso).toLocaleString('de-DE', {
-        timeZone: 'Europe/Berlin',
-        day: '2-digit',
-        month: '2-digit',
-        year: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    }
-
     // Per-worker chart UI state (expanded/collapsed + selected range), kept
     // outside the render loop since workerList's DOM is fully rebuilt on
     // every 10s poll — without this the accordion would snap shut on every
@@ -640,7 +638,7 @@
     // so a real outlier is never clipped — this is just where the gridlines
     // start out for a typical worker on that preset (e.g. low ~ Z9 mini).
     const HASHRATE_PRESET_RANGES = {
-      low: { min: 5000, max: 35000 },
+      low: { min: 5000, max: 25000 },
       medium: { min: 50000, max: 150000 },
       high: { min: 300000, max: 880000 },
     };
@@ -680,6 +678,62 @@
       });
     }
 
+    // "Nice round number" step for an axis — same idea D3/most charting libs
+    // use, so a range like 5k-25k gets clean 5k-spaced gridlines (5/10/15/
+    // 20/25k) instead of awkward fractions of the raw span.
+    function niceStep(rawStep) {
+      const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+      const residual = rawStep / magnitude;
+      const niceResidual = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
+      return niceResidual * magnitude;
+    }
+
+    function computeNiceYTicks(axisMin, axisMax, targetCount) {
+      const step = niceStep((axisMax - axisMin) / (targetCount - 1));
+      const ticks = [];
+      for (let v = Math.ceil(axisMin / step) * step; v <= axisMax + step * 0.001; v += step) {
+        ticks.push(v);
+      }
+      return ticks.length ? ticks : [axisMin, axisMax];
+    }
+
+    // Single shared tooltip element reused by every worker's chart — cheaper
+    // than creating/destroying one per canvas, and canvases get torn down
+    // and recreated wholesale every 10s poll anyway.
+    let chartTooltipEl;
+    function getChartTooltip() {
+      if (!chartTooltipEl) {
+        chartTooltipEl = document.createElement('div');
+        chartTooltipEl.className = 'chart-tooltip';
+        document.body.appendChild(chartTooltipEl);
+      }
+      return chartTooltipEl;
+    }
+
+    function handleChartPointer(ev, canvas, anchors) {
+      const rect = canvas.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+      let nearest = null;
+      let nearestDist = 10; // px hit-radius
+      anchors.forEach((a) => {
+        const dist = Math.hypot(a.x - x, a.y - y);
+        if (dist < nearestDist) {
+          nearest = a;
+          nearestDist = dist;
+        }
+      });
+      const tooltip = getChartTooltip();
+      if (!nearest) {
+        tooltip.style.display = 'none';
+        return;
+      }
+      tooltip.textContent = formatSol(nearest.hr) + ' · ' + formatTimeBerlinShort(nearest.t);
+      tooltip.style.display = 'block';
+      tooltip.style.left = (ev.clientX + 10) + 'px';
+      tooltip.style.top = (ev.clientY - 28) + 'px';
+    }
+
     function drawHashrateChart(canvas, points, presetKey) {
       const cssWidth = canvas.clientWidth || 260;
       const cssHeight = 96;
@@ -716,25 +770,29 @@
       const yToPixel = (hr) => topPad + plotHeight - ((hr - axisMin) / axisRange) * plotHeight;
       const xToPixel = (t) => leftPad + ((t - minT) / spanT) * plotWidth;
 
-      // Y-axis: 4 gridlines + kSol/s labels on the left.
+      // Y-axis: nice round-number gridlines + kSol/s labels on the left —
+      // step size adapts to the axis span (5k steps for a tight low-preset
+      // range, coarser for medium/high) instead of a fixed tick count.
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
       ctx.lineWidth = 1;
       ctx.fillStyle = 'rgba(184, 184, 194, 0.75)';
-      const Y_TICKS = 4;
-      for (let i = 0; i < Y_TICKS; i++) {
-        const value = axisMin + (axisRange * i) / (Y_TICKS - 1);
+      computeNiceYTicks(axisMin, axisMax, 5).forEach((value) => {
         const y = yToPixel(value);
         ctx.beginPath();
         ctx.moveTo(leftPad, y);
         ctx.lineTo(cssWidth - rightPad, y);
         ctx.stroke();
         ctx.fillText(formatKSolShort(value), 0, Math.min(Math.max(y + 3, 8), cssHeight - bottomPad));
-      }
+      });
 
-      // X-axis: 5 evenly-spaced time-of-day labels (Berlin), no date.
+      // X-axis: 5 evenly-spaced time-of-day labels (Berlin), no date. The
+      // same 5 target times are reused below to place one hover-able dot
+      // per sector on the line, snapped to the nearest real sample.
       const X_TICKS = 5;
+      const xTickTimes = [];
       for (let i = 0; i < X_TICKS; i++) {
         const t = minT + (spanT * i) / (X_TICKS - 1);
+        xTickTimes.push(t);
         const x = xToPixel(t);
         const label = formatTimeBerlinShort(t);
         const labelX = i === 0 ? leftPad
@@ -744,15 +802,46 @@
       }
 
       // Hashrate line.
+      const goldColor = getComputedStyle(document.documentElement).getPropertyValue('--gold-2').trim() || '#fdce58';
       ctx.beginPath();
       points.forEach((p, i) => {
         const x = xToPixel(p.t);
         const y = yToPixel(p.hr);
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
-      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--gold-2').trim() || '#fdce58';
+      ctx.strokeStyle = goldColor;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+
+      // One hover-able dot per X-axis sector, snapped to the nearest real
+      // sample for that target time (deduped in case two sectors land on
+      // the same sample in a sparsely-sampled range).
+      const anchors = [];
+      const seenTimes = new Set();
+      xTickTimes.forEach((targetT) => {
+        let nearest = points[0];
+        let nearestDist = Infinity;
+        points.forEach((p) => {
+          const dist = Math.abs(p.t - targetT);
+          if (dist < nearestDist) {
+            nearest = p;
+            nearestDist = dist;
+          }
+        });
+        if (seenTimes.has(nearest.t)) return;
+        seenTimes.add(nearest.t);
+        anchors.push({ x: xToPixel(nearest.t), y: yToPixel(nearest.hr), t: nearest.t, hr: nearest.hr });
+      });
+      ctx.fillStyle = goldColor;
+      anchors.forEach((a) => {
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      canvas.onpointermove = (ev) => handleChartPointer(ev, canvas, anchors);
+      canvas.onpointerdown = (ev) => handleChartPointer(ev, canvas, anchors);
+      canvas.onpointerleave = () => { getChartTooltip().style.display = 'none'; };
     }
 
     async function updatePoolStatus() {
@@ -826,8 +915,8 @@
                 '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) + '</div>' +
               '</div>' +
               '<div class="worker-chart-toggle">' +
-                '<span>More details</span>' +
                 '<span class="chevron">' + (chartState.expanded ? '▴' : '▾') + '</span>' +
+                '<span>More details</span>' +
               '</div>' +
               '<div class="worker-chart' + (chartState.expanded ? '' : ' hidden') + '">' +
                 '<div class="chart-range-row">' +
@@ -864,14 +953,8 @@
             : null;
           document.getElementById('bestShareValue').textContent =
             formatDifficulty(data.bestShareDifficultyEver) + (atDifficulty ? ' / ' + atDifficulty : '');
-          const dateTimeStr = formatDateTimeBerlin(data.bestShareDifficultyAt);
-          const subParts = [];
-          if (data.bestShareDifficultyWorker) subParts.push(data.bestShareDifficultyWorker);
-          if (dateTimeStr) subParts.push(dateTimeStr);
-          document.getElementById('bestShareSub').textContent = subParts.join(' · ');
         } else {
           document.getElementById('bestShareValue').textContent = '–';
-          document.getElementById('bestShareSub').textContent = '';
         }
 
         document.getElementById('poolLastUpdate').textContent =
