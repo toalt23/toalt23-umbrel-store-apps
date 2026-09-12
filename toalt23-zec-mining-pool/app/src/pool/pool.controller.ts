@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
 } from '@nestjs/common';
 import { StratumService, type PoolStatus } from './stratum.service';
 import {
@@ -11,6 +12,13 @@ import {
   type PoolConfigStatus,
 } from './pool-config.service';
 import { DockerControlService } from './docker-control.service';
+
+/** Selectable ranges for the dashboard's per-worker hashrate chart. */
+const HASHRATE_HISTORY_RANGE_MS: Record<string, number> = {
+  '15m': 15 * 60 * 1000,
+  '1h': 60 * 60 * 1000,
+  '8h': 8 * 60 * 60 * 1000,
+};
 
 @Controller('api/pool')
 export class PoolController {
@@ -55,6 +63,20 @@ export class PoolController {
       ? await this.dockerControlService.restartZakuraContainer()
       : false;
     return { ok: true, changed, zakuraRestarted };
+  }
+
+  @Get('worker-hashrate-history')
+  getWorkerHashrateHistory(
+    @Query('worker') worker?: string,
+    @Query('range') range?: string,
+  ): { t: number; hr: number }[] {
+    if (!worker)
+      throw new BadRequestException('worker query param is required');
+    const rangeMs = HASHRATE_HISTORY_RANGE_MS[range ?? '15m'];
+    if (!rangeMs) {
+      throw new BadRequestException('range must be one of 15m, 1h, 8h');
+    }
+    return this.stratumService.getWorkerHashrateHistory(worker, rangeMs);
   }
 
   @Post('reset-best-share')

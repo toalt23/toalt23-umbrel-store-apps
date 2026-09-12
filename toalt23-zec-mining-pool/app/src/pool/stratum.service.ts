@@ -53,6 +53,11 @@ interface ShareSample {
   difficulty: number;
 }
 
+interface HashrateSample {
+  t: number;
+  hr: number;
+}
+
 interface WorkerConnection {
   socket: net.Socket;
   sessionId: string;
@@ -72,6 +77,8 @@ interface WorkerConnection {
   recentShareDifficulties: ShareSample[];
   /** Highest difficulty this worker has achieved this session — resets on reconnect, unlike the pool-wide record below. */
   bestShareDifficulty: number;
+  /** Periodic hashrate snapshots for the dashboard's per-worker chart, oldest first. Lives on the connection itself so it's naturally gone the moment a worker disconnects — no separate cleanup needed. */
+  hashrateHistory: HashrateSample[];
 }
 
 export interface PoolWorkerStatus {
@@ -109,6 +116,11 @@ export interface PoolStatus {
 }
 
 const SHARE_WINDOW_MS = 10 * 60 * 1000;
+// How often a hashrate snapshot is taken per worker for the dashboard chart,
+// and how long those snapshots are kept — 8h at 15s resolution is ~1920
+// points per connected worker, trivial to hold in memory.
+const HASHRATE_HISTORY_SAMPLE_MS = 15 * 1000;
+const HASHRATE_HISTORY_RETENTION_MS = 8 * 60 * 60 * 1000;
 const MAX_JOBS_RETAINED = 6;
 const MAX_LINE_LENGTH = 65536;
 const LONGPOLL_MIN_BACKOFF_MS = 1000;
@@ -137,6 +149,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
 
   private server?: net.Server;
   private longPollSleepTimer?: NodeJS.Timeout;
+  private hashrateHistoryTimer?: NodeJS.Timeout;
   private readonly connections = new Map<string, WorkerConnection>();
   private readonly jobs = new Map<string, Job>();
   private currentJob: Job | null = null;
@@ -193,11 +206,17 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     // isn't reachable yet at container start) and is the sole source of
     // template updates from here on.
     void this.runLongPollLoop();
+
+    this.hashrateHistoryTimer = setInterval(
+      () => this.sampleHashrateHistory(),
+      HASHRATE_HISTORY_SAMPLE_MS,
+    );
   }
 
   onModuleDestroy() {
     this.stopped = true;
     if (this.longPollSleepTimer) clearTimeout(this.longPollSleepTimer);
+    if (this.hashrateHistoryTimer) clearInterval(this.hashrateHistoryTimer);
     this.server?.close();
     for (const conn of this.connections.values()) conn.socket.destroy();
   }
@@ -233,14 +252,6 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
           (c): c is WorkerConnection & { workerName: string } => !!c.workerName,
         )
         .map((c) => {
-          const windowSeconds = Math.min(
-            (now - c.connectedAt) / 1000,
-            SHARE_WINDOW_MS / 1000,
-          );
-          const totalDifficulty = c.recentShareDifficulties.reduce(
-            (sum, s) => sum + s.difficulty,
-            0,
-          );
           return {
             workerName: c.workerName,
             presetKey: c.presetKey,
@@ -248,10 +259,9 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
             acceptedShares: c.acceptedShares,
             rejectedShares: c.rejectedShares,
             staleShares: c.staleShares,
-            estimatedHashrateSolPerSecond: estimateHashrate(
-              totalDifficulty,
-              windowSeconds,
-              this.currentJob?.diff1Target ?? 0n,
+            estimatedHashrateSolPerSecond: this.estimateConnectionHashrate(
+              c,
+              now,
             ),
             bestShareDifficulty: c.bestShareDifficulty,
             connectedAt: new Date(c.connectedAt).toISOString(),
@@ -261,6 +271,51 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
           };
         }),
     };
+  }
+
+  private estimateConnectionHashrate(c: WorkerConnection, now: number): number {
+    const windowSeconds = Math.min(
+      (now - c.connectedAt) / 1000,
+      SHARE_WINDOW_MS / 1000,
+    );
+    const totalDifficulty = c.recentShareDifficulties.reduce(
+      (sum, s) => sum + s.difficulty,
+      0,
+    );
+    return estimateHashrate(
+      totalDifficulty,
+      windowSeconds,
+      this.currentJob?.diff1Target ?? 0n,
+    );
+  }
+
+  /** Ticks every HASHRATE_HISTORY_SAMPLE_MS, snapshotting each connected worker's live hashrate into its own history buffer and trimming anything past the retention window. */
+  private sampleHashrateHistory() {
+    const now = Date.now();
+    const cutoff = now - HASHRATE_HISTORY_RETENTION_MS;
+    for (const c of this.connections.values()) {
+      if (!c.workerName) continue;
+      c.hashrateHistory.push({
+        t: now,
+        hr: this.estimateConnectionHashrate(c, now),
+      });
+      while (c.hashrateHistory.length && c.hashrateHistory[0].t < cutoff) {
+        c.hashrateHistory.shift();
+      }
+    }
+  }
+
+  /** Chart data for one worker's dashboard accordion — empty once it disconnects, since the history lives only on its (now-gone) connection object. */
+  getWorkerHashrateHistory(
+    workerName: string,
+    rangeMs: number,
+  ): HashrateSample[] {
+    const conn = [...this.connections.values()].find(
+      (c) => c.workerName === workerName,
+    );
+    if (!conn) return [];
+    const cutoff = Date.now() - rangeMs;
+    return conn.hashrateHistory.filter((s) => s.t >= cutoff);
   }
 
   // ---------------------------------------------------------------------
@@ -494,6 +549,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       staleShares: 0,
       recentShareDifficulties: [],
       bestShareDifficulty: 0,
+      hashrateHistory: [],
     };
     this.connections.set(sessionId, conn);
     this.logger.log(
@@ -662,7 +718,12 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       string | undefined
     )[];
     if (!jobId || !timeHex || !nonce2Hex || !solutionHex) {
-      this.logReject('warn', conn, jobId, 'malformed submission (missing params)');
+      this.logReject(
+        'warn',
+        conn,
+        jobId,
+        'malformed submission (missing params)',
+      );
       return this.sendError(conn, id, ERR_OTHER, 'Malformed submission');
     }
 
@@ -725,7 +786,12 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Header assembly failed';
-      this.logReject('warn', conn, jobId, `header assembly failed — ${message}`);
+      this.logReject(
+        'warn',
+        conn,
+        jobId,
+        `header assembly failed — ${message}`,
+      );
       return this.sendError(conn, id, ERR_OTHER, message);
     }
     const fullHeader = assembleFullHeader(

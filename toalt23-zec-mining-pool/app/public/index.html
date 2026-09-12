@@ -115,29 +115,42 @@
     #minerContent.hidden { display: none; }
 
     .worker-row { background: var(--card-alt); padding: 12px 14px; border-radius: 10px; }
+    .worker-row .worker-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
     .worker-row .worker-name,
-    .worker-row .worker-hashrate { font-size: 1.3rem; font-weight: 700; color: #ffffff; text-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
-    .worker-row .worker-meta { font-size: 0.82rem; color: var(--text-secondary); margin-top: 3px; }
+    .worker-row .worker-hashrate { font-size: 1.15rem; font-weight: 700; color: #ffffff; text-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
+    .worker-row .worker-bottom { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 3px; }
+    .worker-row .worker-shares { font-size: 0.82rem; color: var(--text-secondary); }
     .worker-row .worker-shares-ok { color: var(--green); }
     .worker-row .worker-shares-bad { color: var(--red); }
-    .worker-row .worker-best { font-size: 0.78rem; color: var(--gold-2); margin-top: 3px; }
+    .worker-row .worker-best { font-size: 0.78rem; color: var(--gold-2); white-space: nowrap; }
 
-    .best-share-banner {
-      background: var(--card-alt);
-      border: 1px solid rgba(253, 206, 88, 0.4);
-      border-radius: 10px;
-      padding: 14px 16px;
-      margin-top: 10px;
-      font-size: 0.95rem;
+    .worker-chart-toggle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.76rem;
       color: var(--text-secondary);
-      box-shadow: 0 0 12px rgba(253, 206, 88, 0.09);
+      cursor: pointer;
+      user-select: none;
     }
-    .best-share-banner .bsb-row { display: flex; align-items: flex-start; gap: 6px; }
-    .best-share-banner .icon { font-size: 1.8em; line-height: 1; flex-shrink: 0; filter: drop-shadow(0 0 3px rgba(253, 206, 88, 0.3)); }
-    .best-share-banner .value,
-    .best-share-banner .value-sub { color: var(--gold-2); font-weight: 600; }
-    .best-share-banner .meta-line { margin-top: 6px; font-size: 0.85em; }
-    .best-share-banner.hidden { display: none; }
+    .worker-chart-toggle .chevron { font-size: 0.7rem; }
+    .worker-chart { margin-top: 8px; }
+    .worker-chart.hidden { display: none; }
+    .chart-range-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .chart-range-btn {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: var(--text-secondary);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 0.7rem;
+      cursor: pointer;
+    }
+    .chart-range-btn.active { border-color: var(--gold-2); color: var(--gold-2); }
+    .chart-canvas { width: 100%; height: 64px; display: block; }
 
     .config-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--card-alt); }
     .config-section label { display: block; font-size: 1rem; color: var(--text-secondary); margin-bottom: 6px; }
@@ -304,12 +317,14 @@
         <div>No workers connected yet.</div>
       </div>
       <div id="minerContent" class="hidden">
-        <div class="stats" style="grid-template-columns: 1fr 1fr 1fr;">
+        <div class="stats">
           <div class="stat"><div class="stat-label">Blocks Found</div><div class="stat-value" id="blocksFound">–</div></div>
           <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
-          <div class="stat"><div class="stat-label">Verification</div><div class="stat-value" id="verifyStatus">–</div></div>
+          <div class="stat"><div class="stat-label">Pool Hashrate</div><div class="stat-value" id="poolHashrate">–</div></div>
+          <div class="stat"><div class="stat-label">Pool's Best Share</div><div class="stat-value" id="bestShareValue">–</div><div class="stat-sub" id="bestShareSub"></div></div>
+          <div class="stat"><div class="stat-label">Network Hashrate</div><div class="stat-value" id="minerNetworkHashrate">–</div></div>
+          <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="minerDifficulty">–</div></div>
         </div>
-        <div class="best-share-banner hidden" id="bestShareBanner"></div>
         <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
       </div>
       <div class="footer-row">
@@ -332,6 +347,7 @@
         <div class="stat hidden" id="peersStat"><div class="stat-label">Peers</div><div class="stat-value" id="peers">–</div></div>
         <div class="stat hidden" id="diskStat"><div class="stat-label">Chain Size</div><div class="stat-value" id="disk">–</div></div>
         <div class="stat hidden" id="versionStat"><div class="stat-label">Node Version</div><div class="stat-value" id="version">–</div></div>
+        <div class="stat"><div class="stat-label">Verification</div><div class="stat-value" id="verifyStatus">–</div></div>
       </div>
 
       <div class="footer-row">
@@ -343,20 +359,20 @@
       <div class="connect-section">
         <div class="section-heading">How to connect</div>
         <ol>
-          <li>Set the payout address below first — required to build valid blocks.</li>
-          <li>Point your miner at this node's IP (same address as this page), port <code id="connectPort">–</code>.</li>
+          <li>Set the payout address and save (your wallet address); coinbase tag is optional.</li>
+          <li>Point your miner at this node's IP, port <code id="connectPort">–</code>.</li>
           <li>Worker name: anything, e.g. <code>rig1</code>.</li>
           <li>
-            Password sets the share difficulty (higher = fewer, harder shares):
+            Password sets the share difficulty:
             <ul>
-              <li><code>low</code> — diff 50 (Z9 mini)</li>
-              <li><code>medium</code> — diff 128, default (Z15)</li>
-              <li><code>high</code> — diff 256 (Z15 Pro)</li>
+              <li><code>low</code> — diff 24 (Z9 mini)</li>
+              <li><code>medium</code> — diff 128, default (Z11)</li>
+              <li><code>high</code> — diff 256 (Z15/Z15 Pro)</li>
             </ul>
           </li>
         </ol>
         <div class="connect-example">
-          <div class="connect-example-title">Example (Antminer/Bitmain-style pool config)</div>
+          <div class="connect-example-title">Example</div>
           <div class="connect-row"><span>URL</span><code id="connectUrl">stratum+tcp://&lt;this node's IP&gt;:–</code></div>
           <div class="connect-row"><span>Worker</span><code>rig1</code></div>
           <div class="connect-row"><span>Password</span><code>high</code></div>
@@ -528,6 +544,12 @@
 
           document.getElementById('difficulty').textContent =
             data.difficulty != null ? formatShortNumber(Number(data.difficulty)) : '–';
+          // Same two values, mirrored onto the Miner tab's own tiles (see below) —
+          // no separate fetch, this poll already has everything they need.
+          document.getElementById('minerDifficulty').textContent =
+            data.difficulty != null ? formatShortNumber(Number(data.difficulty)) : '–';
+          document.getElementById('minerNetworkHashrate').textContent =
+            formatSolps(data.networkSolps) ?? '–';
 
           setStat('hashrate', 'hashrateStat', formatSolps(data.networkSolps));
           setStat('peers', 'peersStat', data.peers != null ? String(data.peers) : null);
@@ -595,6 +617,70 @@
       return dd + '.' + mm + '.' + yy;
     }
 
+    // Per-worker chart UI state (expanded/collapsed + selected range), kept
+    // outside the render loop since workerList's DOM is fully rebuilt on
+    // every 10s poll — without this the accordion would snap shut on every
+    // refresh. Deliberately not persisted anywhere: a worker disconnecting
+    // means its entry (and the server-side history behind it) is gone
+    // anyway, so there's nothing meaningful to remember past that.
+    const workerChartState = {};
+    const HASHRATE_CHART_RANGES = ['15m', '1h', '8h'];
+
+    function getWorkerChartState(workerName) {
+      if (!workerChartState[workerName]) {
+        workerChartState[workerName] = { expanded: false, range: '15m' };
+      }
+      return workerChartState[workerName];
+    }
+
+    async function loadWorkerChart(workerName, row) {
+      const state = getWorkerChartState(workerName);
+      const canvas = row.querySelector('.chart-canvas');
+      if (!canvas) return;
+      try {
+        const res = await fetch(
+          '/api/pool/worker-hashrate-history?worker=' + encodeURIComponent(workerName) +
+          '&range=' + state.range,
+        );
+        const points = await res.json();
+        drawHashrateChart(canvas, points);
+      } catch {
+        // Best-effort — leave whatever the canvas last showed.
+      }
+    }
+
+    function drawHashrateChart(canvas, points) {
+      const cssWidth = canvas.clientWidth || 260;
+      const cssHeight = 64;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = cssWidth * dpr;
+      canvas.height = cssHeight * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+      if (!points || points.length < 2) {
+        ctx.fillStyle = 'rgba(184, 184, 194, 0.7)';
+        ctx.font = '11px -apple-system, sans-serif';
+        ctx.fillText('Collecting data…', 6, cssHeight / 2);
+        return;
+      }
+
+      const pad = 4;
+      const maxHr = Math.max(...points.map((p) => p.hr), 0.0001);
+      const minT = points[0].t;
+      const spanT = Math.max(points[points.length - 1].t - minT, 1);
+      ctx.beginPath();
+      points.forEach((p, i) => {
+        const x = pad + ((p.t - minT) / spanT) * (cssWidth - pad * 2);
+        const y = cssHeight - pad - (p.hr / maxHr) * (cssHeight - pad * 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--gold-2').trim() || '#fdce58';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
     async function updatePoolStatus() {
       try {
         const res = await fetch('/api/pool/status');
@@ -632,6 +718,12 @@
         verifyEl.textContent = data.equihashVerifyAvailable ? 'Active' : 'Unavailable';
         verifyEl.className = 'stat-value ' + (data.equihashVerifyAvailable ? 'synced' : 'syncing');
 
+        const totalHashrate = data.connectedWorkers.reduce(
+          (sum, w) => sum + w.estimatedHashrateSolPerSecond, 0,
+        );
+        document.getElementById('poolHashrate').textContent =
+          data.connectedWorkers.length ? formatSol(totalHashrate) : '–';
+
         const empty = document.getElementById('minerEmpty');
         const content = document.getElementById('minerContent');
         if (data.connectedWorkers.length === 0) {
@@ -645,40 +737,67 @@
           data.connectedWorkers.forEach((w) => {
             const row = document.createElement('div');
             row.className = 'worker-row';
+            const chartState = getWorkerChartState(w.workerName);
             row.innerHTML =
-              '<div class="worker-name">' + w.workerName + '</div>' +
-              '<div class="worker-meta">' +
-                '<span class="worker-hashrate">' + formatSol(w.estimatedHashrateSolPerSecond) + '</span>' +
-                ' · <span class="worker-shares-ok">' + w.acceptedShares + ' shares accepted</span>' +
-                (w.rejectedShares ? ', <span class="worker-shares-bad">' + w.rejectedShares + ' rejected</span>' : '') +
-                (w.staleShares ? ', <span class="worker-shares-bad">' + w.staleShares + ' stale</span>' : '') +
+              '<div class="worker-top">' +
+                '<div class="worker-name">' + w.workerName + '</div>' +
+                '<div class="worker-hashrate">' + formatSol(w.estimatedHashrateSolPerSecond) + '</div>' +
               '</div>' +
-              '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) + '</div>';
+              '<div class="worker-bottom">' +
+                '<div class="worker-shares">' +
+                  '<span class="worker-shares-ok">' + w.acceptedShares + ' shares accepted</span>' +
+                  (w.rejectedShares ? ', <span class="worker-shares-bad">' + w.rejectedShares + ' rejected</span>' : '') +
+                  (w.staleShares ? ', <span class="worker-shares-bad">' + w.staleShares + ' stale</span>' : '') +
+                '</div>' +
+                '<div class="worker-best">Best share: ' + formatDifficulty(w.bestShareDifficulty) + '</div>' +
+              '</div>' +
+              '<div class="worker-chart-toggle">' +
+                '<span>Hashrate chart</span>' +
+                '<span class="chevron">' + (chartState.expanded ? '▴' : '▾') + '</span>' +
+              '</div>' +
+              '<div class="worker-chart' + (chartState.expanded ? '' : ' hidden') + '">' +
+                '<div class="chart-range-row">' +
+                  HASHRATE_CHART_RANGES.map((r) =>
+                    '<button class="chart-range-btn' + (chartState.range === r ? ' active' : '') + '" data-range="' + r + '">' + r + '</button>',
+                  ).join('') +
+                '</div>' +
+                '<canvas class="chart-canvas"></canvas>' +
+              '</div>';
             list.appendChild(row);
+
+            const toggle = row.querySelector('.worker-chart-toggle');
+            const chartBox = row.querySelector('.worker-chart');
+            toggle.addEventListener('click', () => {
+              chartState.expanded = !chartState.expanded;
+              chartBox.classList.toggle('hidden', !chartState.expanded);
+              toggle.querySelector('.chevron').textContent = chartState.expanded ? '▴' : '▾';
+              if (chartState.expanded) loadWorkerChart(w.workerName, row);
+            });
+            row.querySelectorAll('.chart-range-btn').forEach((btn) => {
+              btn.addEventListener('click', () => {
+                chartState.range = btn.dataset.range;
+                row.querySelectorAll('.chart-range-btn').forEach((b) => b.classList.toggle('active', b === btn));
+                loadWorkerChart(w.workerName, row);
+              });
+            });
+            if (chartState.expanded) loadWorkerChart(w.workerName, row);
           });
         }
 
-        const banner = document.getElementById('bestShareBanner');
+        document.getElementById('bestShareValue').textContent =
+          data.bestShareDifficultyEver > 0 ? formatDifficulty(data.bestShareDifficultyEver) : '–';
         if (data.bestShareDifficultyEver > 0) {
           const atDifficulty = data.bestShareNetworkDifficulty != null
             ? formatDifficulty(data.bestShareNetworkDifficulty)
             : null;
           const dateStr = formatDateDDMMYY(data.bestShareDifficultyAt);
-          const metaParts = [];
-          if (data.bestShareDifficultyWorker) metaParts.push('worker: ' + data.bestShareDifficultyWorker);
-          if (dateStr) metaParts.push(dateStr);
-          banner.classList.remove('hidden');
-          banner.innerHTML =
-            '<div class="bsb-row">' +
-              '<span class="icon">🍀</span>' +
-              '<div>' +
-                'Pool\'s best share <span class="value">' + formatDifficulty(data.bestShareDifficultyEver) + '</span>' +
-                (atDifficulty ? ' / target <span class="value-sub">' + atDifficulty + '</span>' : '') +
-                (metaParts.length ? '<div class="meta-line">' + metaParts.join(' · ') + '</div>' : '') +
-              '</div>' +
-            '</div>';
+          const subParts = [];
+          if (atDifficulty) subParts.push('target ' + atDifficulty);
+          if (data.bestShareDifficultyWorker) subParts.push(data.bestShareDifficultyWorker);
+          if (dateStr) subParts.push(dateStr);
+          document.getElementById('bestShareSub').textContent = subParts.join(' · ');
         } else {
-          banner.classList.add('hidden');
+          document.getElementById('bestShareSub').textContent = '';
         }
 
         document.getElementById('poolLastUpdate').textContent =
