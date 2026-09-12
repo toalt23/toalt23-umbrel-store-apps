@@ -379,7 +379,7 @@
           <li>
             Password sets the share difficulty:
             <ul>
-              <li><code>low</code> — diff 32 (Z9 mini)</li>
+              <li><code>low</code> — diff 24 (Z9 mini)</li>
               <li><code>medium</code> — diff 128, default (Z11)</li>
               <li><code>high</code> — diff 256 (Z15/Z15 Pro)</li>
             </ul>
@@ -466,7 +466,7 @@
       document.querySelectorAll('#workerList .worker-row').forEach((row) => {
         const chartBox = row.querySelector('.worker-chart');
         if (!chartBox || chartBox.classList.contains('hidden')) return;
-        loadWorkerChart(row.dataset.worker, row, row.dataset.preset);
+        loadWorkerChart(row.dataset.worker, row);
       });
     }
 
@@ -654,18 +654,6 @@
     const workerChartState = {};
     const HASHRATE_CHART_RANGES = ['15m', '1h', '8h'];
 
-    // Default/typical Sol/s span per difficulty preset, used as the chart's
-    // starting Y-axis range (in Sol/s — history samples are stored raw, same
-    // as everywhere else; formatKSolShort below converts for display). The
-    // axis adapts beyond this if a worker's actual hashrate goes outside it,
-    // so a real outlier is never clipped — this is just where the gridlines
-    // start out for a typical worker on that preset (e.g. low ~ Z9 mini).
-    const HASHRATE_PRESET_RANGES = {
-      low: { min: 5000, max: 25000 },
-      medium: { min: 50000, max: 150000 },
-      high: { min: 300000, max: 880000 },
-    };
-
     function getWorkerChartState(workerName) {
       if (!workerChartState[workerName]) {
         workerChartState[workerName] = { expanded: false, range: '15m' };
@@ -673,7 +661,7 @@
       return workerChartState[workerName];
     }
 
-    async function loadWorkerChart(workerName, row, presetKey) {
+    async function loadWorkerChart(workerName, row) {
       const state = getWorkerChartState(workerName);
       const canvas = row.querySelector('.chart-canvas');
       if (!canvas) return;
@@ -683,7 +671,7 @@
           '&range=' + state.range,
         );
         const points = await res.json();
-        drawHashrateChart(canvas, points, presetKey);
+        drawHashrateChart(canvas, points);
       } catch {
         // Best-effort — leave whatever the canvas last showed.
       }
@@ -757,7 +745,7 @@
       tooltip.style.top = (ev.clientY - 28) + 'px';
     }
 
-    function drawHashrateChart(canvas, points, presetKey) {
+    function drawHashrateChart(canvas, points) {
       const cssWidth = canvas.clientWidth || 260;
       const cssHeight = 96;
       const dpr = window.devicePixelRatio || 1;
@@ -782,10 +770,20 @@
         return;
       }
 
-      const preset = HASHRATE_PRESET_RANGES[presetKey] || HASHRATE_PRESET_RANGES.medium;
+      // Y-axis is fit to this worker's own observed range, not a fixed
+      // preset span — a worker sitting steadily at 5-12 kSol/s shouldn't
+      // have its curve squashed into a chart that reserves headroom up to
+      // a preset's typical ceiling it never comes near. Padded by 15% of
+      // the observed swing (or 10% of the value itself when the line has
+      // been essentially flat) so the curve doesn't touch the top/bottom
+      // edge, and clamped at 0 since a hashrate can't go negative.
       const hrs = points.map((p) => p.hr);
-      const axisMin = Math.min(preset.min, ...hrs);
-      const axisMax = Math.max(preset.max, ...hrs);
+      const dataMin = Math.min(...hrs);
+      const dataMax = Math.max(...hrs);
+      const dataSpan = dataMax - dataMin;
+      const pad = dataSpan > 0 ? dataSpan * 0.15 : Math.max(dataMax * 0.1, 500);
+      const axisMin = Math.max(0, dataMin - pad);
+      const axisMax = dataMax + pad;
       const axisRange = Math.max(axisMax - axisMin, 1);
       const minT = points[0].t;
       const spanT = Math.max(points[points.length - 1].t - minT, 1);
@@ -924,7 +922,6 @@
             const row = document.createElement('div');
             row.className = 'worker-row';
             row.dataset.worker = w.workerName;
-            row.dataset.preset = w.presetKey;
             const chartState = getWorkerChartState(w.workerName);
             row.innerHTML =
               '<div class="worker-top">' +
@@ -959,16 +956,16 @@
               chartState.expanded = !chartState.expanded;
               chartBox.classList.toggle('hidden', !chartState.expanded);
               toggle.querySelector('.chevron').textContent = chartState.expanded ? '▴' : '▾';
-              if (chartState.expanded) loadWorkerChart(w.workerName, row, w.presetKey);
+              if (chartState.expanded) loadWorkerChart(w.workerName, row);
             });
             row.querySelectorAll('.chart-range-btn').forEach((btn) => {
               btn.addEventListener('click', () => {
                 chartState.range = btn.dataset.range;
                 row.querySelectorAll('.chart-range-btn').forEach((b) => b.classList.toggle('active', b === btn));
-                loadWorkerChart(w.workerName, row, w.presetKey);
+                loadWorkerChart(w.workerName, row);
               });
             });
-            if (chartState.expanded && isPoolTabVisible()) loadWorkerChart(w.workerName, row, w.presetKey);
+            if (chartState.expanded && isPoolTabVisible()) loadWorkerChart(w.workerName, row);
           });
         }
 
