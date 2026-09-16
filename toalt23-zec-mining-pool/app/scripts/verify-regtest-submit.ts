@@ -132,9 +132,19 @@ async function main() {
     );
   }
 
+  // Real blocks are ~75s apart on mainnet, giving Zakura's internal state
+  // plenty of time to settle between submissions. Our script hits submitblock
+  // and the next getblocktemplate back-to-back — if a fresh submission's
+  // chain-history state takes the read side a moment to catch up, this delay
+  // rules that out (vs. an actual bug in our block assembly).
+  const DELAY_BETWEEN_BLOCKS_MS = Number(process.env.REGTEST_BLOCK_DELAY_MS ?? 2000);
+
   for (let i = 1; i <= BLOCKS_TO_MINE; i++) {
     console.log(`Mining block ${i}/${BLOCKS_TO_MINE} via our own assembleBlockHex()/submitBlock() code ...`);
     await mineOneBlock();
+    if (i < BLOCKS_TO_MINE) {
+      await new Promise((resolve) => setTimeout(resolve, DELAY_BETWEEN_BLOCKS_MS));
+    }
   }
 
   const heightAfter = await rpc<number>('getblockcount');
