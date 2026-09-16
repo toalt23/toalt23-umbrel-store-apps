@@ -61,8 +61,26 @@ async function rpc<T>(method: string, params: unknown[] = []): Promise<T> {
 async function main() {
   console.log(`Connecting to Regtest node RPC at ${rpcUrl} ...`);
 
-  const heightBefore = await rpc<number>('getblockcount');
+  let heightBefore = await rpc<number>('getblockcount');
   console.log(`Current height: ${heightBefore}`);
+
+  if (heightBefore === 0) {
+    // Zcash requires the reserved header field to be exactly 32 zero bytes
+    // at the Heartwood activation block. On a fresh Regtest chain, Heartwood
+    // and Canopy both collapse onto height 1, but getblocktemplate's
+    // blockcommitmentshash for that specific first block isn't the required
+    // all-zero value — a one-off quirk of this activation-height collision
+    // that can't happen on Mainnet/Testnet (their upgrades are years apart).
+    // Zakura's own `generate` RPC (only available under the disable_pow
+    // waiver — see regtest-config/zakura-regtest.toml) uses different block-
+    // building logic that handles this correctly, so we use it once here to
+    // skip past this one block. Every block after that is built and
+    // submitted through our own code below, same as the live pool.
+    console.log('Height 0 — generating the one special Heartwood/Canopy-activation block via Zakura\'s own `generate` RPC to skip past it ...');
+    await rpc<string[]>('generate', [1]);
+    heightBefore = await rpc<number>('getblockcount');
+    console.log(`Height after generate: ${heightBefore}`);
+  }
 
   console.log('Fetching block template ...');
   const template = await rpc<BlockTemplateResult>('getblocktemplate', [
