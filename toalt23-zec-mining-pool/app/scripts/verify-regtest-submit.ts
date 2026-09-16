@@ -23,9 +23,23 @@
  * placeholder) — this script calls the block-assembly functions directly
  * instead of going through the stratum protocol.
  *
+ * IMPORTANT: builds the ENTIRE chain through this same code, one block at a
+ * time, via our own submitBlock() calls — never through Zakura's own
+ * `generate` RPC. An earlier version of this script used `generate` to
+ * quickly bootstrap a few blocks first, but that produced blocks whose
+ * getblocktemplate-reported chain-history-root subsequently disagreed with
+ * what submitblock's own validation independently recomputed
+ * (InvalidChainHistoryRoot, expected != actual, persisting at every height
+ * tried) — most likely because `generate` commits blocks through a
+ * different internal path than a genuine submitblock. Building every block
+ * through our own code avoids that entirely and is also more representative
+ * of the real pool, which never uses `generate`.
+ *
  * Usage: npm run verify:regtest
  * (reads REGTEST_RPC_HOST / REGTEST_RPC_PORT from the environment; defaults
- * assume docker-compose.regtest-test.yml's published port)
+ * assume docker-compose.regtest-test.yml's published port. Needs a FRESH
+ * regtest node — restart the container between runs, since ephemeral state
+ * means `docker compose down && up -d` gives you a clean chain again.)
  */
 import axios from 'axios';
 import {
@@ -48,6 +62,17 @@ const rpcUrl = `http://${host}:${port}`;
 // 2^k indices * (n/(k+1) + 1) bits, packed = 32 * 9 bits = 288 bits = 36 bytes.
 const REGTEST_SOLUTION_BYTES = 36;
 
+// This Regtest config's Heartwood/Canopy activation height (see
+// zakura-regtest.toml — no custom activation_heights override, so Zakura's
+// default collapses every upgrade up to Canopy onto height 1). Zcash
+// requires the header's reserved field to be exactly 32 zero bytes at
+// this one height; every block after it uses the real chain-history root
+// getblocktemplate reports.
+const HEARTWOOD_ACTIVATION_HEIGHT = 1;
+
+// How many blocks to mine through our own code before calling it a pass.
+const BLOCKS_TO_MINE = Number(process.env.REGTEST_BLOCKS ?? 5);
+
 async function rpc<T>(method: string, params: unknown[] = []): Promise<T> {
   const response = await axios.post(
     rpcUrl,
@@ -58,59 +83,20 @@ async function rpc<T>(method: string, params: unknown[] = []): Promise<T> {
   return response.data.result as T;
 }
 
-async function main() {
-  console.log(`Connecting to Regtest node RPC at ${rpcUrl} ...`);
-
-  let heightBefore = await rpc<number>('getblockcount');
-  console.log(`Current height: ${heightBefore}`);
-
-  if (heightBefore === 0) {
-    // Zcash requires the reserved header field to be exactly 32 zero bytes
-    // at the Heartwood activation block. On a fresh Regtest chain, Heartwood
-    // and Canopy both collapse onto height 1, but getblocktemplate's
-    // blockcommitmentshash for that specific first block isn't the required
-    // all-zero value — a one-off quirk of this activation-height collision
-    // that can't happen on Mainnet/Testnet (their upgrades are years apart).
-    // Zakura's own `generate` RPC (only available under the disable_pow
-    // waiver — see regtest-config/zakura-regtest.toml) uses different block-
-    // building logic that handles this correctly, so we use it once here to
-    // skip past this one block. Every block after that is built and
-    // submitted through our own code below, same as the live pool.
-    console.log('Height 0 — generating the one special Heartwood/Canopy-activation block via Zakura\'s own `generate` RPC to skip past it ...');
-    await rpc<string[]>('generate', [1]);
-    heightBefore = await rpc<number>('getblockcount');
-    console.log(`Height after generate: ${heightBefore}`);
-  }
-
-  // Extra safety margin: height 2 is the first block that has to build a
-  // *real* chain-history MMR root on top of block 1's special all-zero
-  // activation root — a second activation-boundary edge case, one step on
-  // from the height-1 one above. If that's what's tripping submitblock
-  // (rather than a bug in our own code), generating a few more blocks past
-  // it via Zakura's own `generate` should get us clear of it. Controlled by
-  // MIN_HEIGHT below so this can be dialed up/down without touching the
-  // core test logic.
-  const MIN_HEIGHT = Number(process.env.REGTEST_MIN_HEIGHT ?? 5);
-  if (heightBefore < MIN_HEIGHT) {
-    const toGenerate = MIN_HEIGHT - heightBefore;
-    console.log(`Height ${heightBefore} < ${MIN_HEIGHT} — generating ${toGenerate} more block(s) via \`generate\` to get clear of early activation-boundary edge cases ...`);
-    await rpc<string[]>('generate', [toGenerate]);
-    heightBefore = await rpc<number>('getblockcount');
-    console.log(`Height after generate: ${heightBefore}`);
-  }
-
-  console.log('Fetching block template ...');
+/** Builds, hashes and submits one block from a fresh template — the same functions
+ * stratum.service.ts's handleSubmit()/submitFoundBlock() use for a real share. */
+async function mineOneBlock(): Promise<void> {
   const template = await rpc<BlockTemplateResult>('getblocktemplate', [
     { capabilities: ['coinbasetxn', 'workid', 'coinbase/append'] },
   ]);
-  console.log(`Template height ${template.height}, ${template.transactions.length} mempool tx(s).`);
-  console.log(`  defaultroots.blockcommitmentshash: ${template.defaultroots?.blockcommitmentshash}`);
-  console.log(`  flat blockcommitmentshash:         ${template.blockcommitmentshash}`);
-  console.log(`  defaultroots.merkleroot:           ${template.defaultroots?.merkleroot}`);
+  console.log(`  Template height ${template.height}, ${template.transactions.length} mempool tx(s).`);
 
-  // Same functions stratum.service.ts's handleSubmit()/submitFoundBlock() use
-  // for a real share — only the nonce/solution inputs are placeholders here.
   const fields = extractHeaderFields(template);
+  if (template.height === HEARTWOOD_ACTIVATION_HEIGHT) {
+    console.log('  Height matches the Heartwood activation height — forcing reserved field to 32 zero bytes (protocol requirement), overriding whatever getblocktemplate reported.');
+    fields.reservedBytes = Buffer.alloc(32);
+  }
+
   const timeBytes = uint32LE(template.curtime);
   const nonceBytes = Buffer.alloc(32); // all-zero placeholder — PoW is waived on this node
   const headerWithoutSolution = assembleHeaderWithoutSolution(fields, timeBytes, nonceBytes);
@@ -120,29 +106,40 @@ async function main() {
   const fullHeader = assembleFullHeader(headerWithoutSolution, solutionWithPrefix);
 
   const hash = headerHashToBigInt(doubleSha256(fullHeader));
-  console.log(`Computed block hash: ${hash.toString(16).padStart(64, '0')}`);
+  console.log(`  Computed block hash: ${hash.toString(16).padStart(64, '0')}`);
 
   const coinbaseHex = template.coinbasetxn.data;
   const otherTxHex = template.transactions.map((t) => t.data);
   const blockHex = assembleBlockHex(fullHeader, coinbaseHex, otherTxHex);
-  console.log(`Assembled block hex (${blockHex.length / 2} bytes). Submitting via submitblock ...`);
 
   const rejectReason = await rpc<string | null>('submitblock', [blockHex]);
-
-  if (rejectReason === null) {
-    const heightAfter = await rpc<number>('getblockcount');
-    console.log('✅ Node accepted the block (result: null).');
-    console.log(`   Height ${heightBefore} -> ${heightAfter}.`);
-    if (heightAfter > heightBefore) {
-      console.log('   Confirms assembleHeaderWithoutSolution()/assembleFullHeader()/assembleBlockHex() produce a block the node actually accepts.');
-    } else {
-      console.log('   ⚠️  Height did not increase despite acceptance — worth a closer look.');
-    }
-  } else {
-    console.log(`❌ Node rejected the block: "${rejectReason}"`);
-    console.log('   Likely points at a byte-order or assembly bug in block-header.ts — compare against the RPC byte-order notes at the top of that file.');
-    process.exitCode = 1;
+  if (rejectReason !== null) {
+    throw new Error(`Node rejected block at height ${template.height}: "${rejectReason}"`);
   }
+  console.log(`  ✅ Accepted at height ${template.height}.`);
+}
+
+async function main() {
+  console.log(`Connecting to Regtest node RPC at ${rpcUrl} ...`);
+
+  const heightBefore = await rpc<number>('getblockcount');
+  console.log(`Current height: ${heightBefore}`);
+  if (heightBefore !== 0) {
+    throw new Error(
+      `Expected a fresh chain at height 0, found height ${heightBefore}. Restart the regtest container ` +
+      '(docker compose -p zec-regtest-test -f docker-compose.regtest-test.yml down && ... up -d) for a clean run — ' +
+      'ephemeral state means that gives you height 0 again.',
+    );
+  }
+
+  for (let i = 1; i <= BLOCKS_TO_MINE; i++) {
+    console.log(`Mining block ${i}/${BLOCKS_TO_MINE} via our own assembleBlockHex()/submitBlock() code ...`);
+    await mineOneBlock();
+  }
+
+  const heightAfter = await rpc<number>('getblockcount');
+  console.log(`✅ All ${BLOCKS_TO_MINE} blocks accepted. Height ${heightBefore} -> ${heightAfter}.`);
+  console.log('Confirms assembleHeaderWithoutSolution()/assembleFullHeader()/assembleBlockHex() produce blocks the node actually accepts, built entirely through our own code.');
 }
 
 main().catch((error) => {
