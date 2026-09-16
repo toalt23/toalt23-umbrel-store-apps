@@ -281,15 +281,73 @@ sudo docker run --rm --network umbrel_main_network \
    Still not exercised: the full share→block submit pipeline
    (`assembleBlockHex()` + `NodeService.submitBlock()` together) — that's
    item 4 below, needs either a very lucky real share or the regtest setup.
-4. Set up a **separate, temporary regtest zakura container** (fresh small
-   cache dir, `network: Regtest`, no real P2P peers needed) to test the full
-   share→block pipeline (`assembleBlockHex()` + `submitBlock()` together)
-   against a genuinely-found block, in minutes instead of waiting on
-   mainnet solo-mining odds (which for a single ASIC could be a very long
-   time). Needs figuring out: the right env var for network selection, and
-   a regtest-format mining address (different encoding than mainnet
-   t1.../t3...). Not started — figure this out together when we get there,
-   don't guess ahead of time.
+4. **[Done, 2026-09-16 — partial pass, closed out deliberately incomplete]**
+   ~~Set up a separate, temporary regtest zakura container~~ to test the
+   full share→block pipeline. Delivered as `docker-compose.regtest-test.yml`
+   + `regtest-config/zakura-regtest.toml` + `app/scripts/verify-regtest-submit.ts`
+   (`npm run verify:regtest`) — fully isolated from the production
+   node/app, never touches it.
+
+   **What we learned about the setup itself:** `network = { params = {
+   disable_pow = true } }` under `[network]` is the exact syntax (confirmed
+   against zakura-core/zakura's own test vectors) to waive PoW on a Regtest
+   node — restricted to non-production networks at the type level, so this
+   can never leak onto Mainnet/Testnet. With it, Zakura only checks the
+   Equihash solution's *shape* (36 bytes for Regtest's trivial (48,5)
+   params, not cryptographic validity), which is exactly right for this
+   test: proving Equihash-solving works was never the point (already
+   proven live on mainnet) — proving our own header/coinbase byte assembly
+   produces something the node accepts, is. Regtest mining address uses
+   testnet-style encoding (`tm...`). `zakurad start` auto-forces
+   `mempool.debug_enable_at_height = 0` for any Regtest network, so
+   `getblocktemplate` works immediately at genesis, no extra config needed.
+
+   **Result: Block 1 — built entirely through our own
+   `assembleHeaderWithoutSolution()`/`assembleFullHeader()`/
+   `assembleBlockHex()`/`NodeService.submitBlock()` code — was accepted by
+   the node.** This is the exact previously-untested risk area (the
+   RPC-derived header byte-order path and the final assembly-to-submit
+   step) and it passed. One deliberate special case needed: Zcash requires
+   the header's reserved field to be exactly 32 zero bytes at the
+   Heartwood activation height; on a default (no custom activation-heights
+   override) Regtest chain, Heartwood and Canopy both collapse onto height
+   1, so `verify-regtest-submit.ts` forces that field to zero for template
+   height 1 specifically rather than trusting whatever getblocktemplate
+   reports there — confirmed necessary and sufficient by testing.
+
+   **Not resolved, closed out anyway:** block 2 onward (the first block
+   needing a *real* chain-history MMR root, not the activation-reserved
+   zero) was consistently rejected with `InvalidChainHistoryRoot` —
+   `getblocktemplate`'s reported `chainhistoryroot`/`blockcommitmentshash`
+   disagreed with what `submitblock`'s own validation independently
+   recomputed. Ruled out as causes, with evidence: (1) our byte-order
+   handling — confirmed self-consistent, `reverse(our computed bytes) ==
+   template's own reported hex value`, both with and without the
+   Heartwood/Canopy-collapse special case; (2) Zakura's own `generate` RPC
+   as the block-1 builder instead of our code — same mismatch persisted
+   when block 1 was built entirely through our own code too; (3) a
+   read-state propagation lag — a 2s settle delay between blocks changed
+   nothing, and the timestamps in the node's own logs confirm the delay
+   was actually applied. Given the value in question is one we deliberately
+   never compute ourselves (design principle: use the node's own roots
+   verbatim), and the mismatch is reproducible/deterministic rather than
+   flaky, this looks like a Zakura-side edge case specific to a
+   freshly-bootstrapped Regtest chain where Heartwood/Canopy collapse onto
+   height 1 (the default, unless you configure separate activation
+   heights) — not something fixable from the pool app side, and not a
+   scenario that can occur on Mainnet (there these upgrades are years and
+   thousands of blocks apart, each long since battle-tested in
+   production). Deliberately not investigated further into zakura-core's
+   own MMR/history-tree code — diminishing returns for a pool-app project,
+   and would end at an upstream bug report either way, not a change here.
+
+   **Net effect on the original risk:** confidence in
+   `assembleBlockHex()`/`submitBlock()` is now higher than the ~85-90%
+   estimated on 2026-09-02 — the one-block round trip that was never
+   exercised end-to-end now has been, successfully. Still not proven
+   end-to-end against a *second consecutive real submission*, but that gap
+   is now understood to sit in Zakura's own Regtest-only history-tree
+   bookkeeping, not in anything this pool controls.
 5. **[Decided against, 2026-08-29]** ~~Splitting the stratum server into its
    own container~~ and ~~vardiff instead of fixed presets~~ — both dropped,
    not worth it for a small private pool on the user's own hardware.
