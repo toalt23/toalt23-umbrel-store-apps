@@ -1,1 +1,6 @@
 .DS_Store
+
+# Real synced Testnet chain data from the temporary validation stack —
+# see toalt23-zec-mining-pool/docker-compose.testnet-test.yml. Never commit
+# actual blockchain state.
+toalt23-zec-mining-pool/testnet-config/zakura-cache/

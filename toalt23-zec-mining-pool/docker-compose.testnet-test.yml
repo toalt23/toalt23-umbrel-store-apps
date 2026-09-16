@@ -1,0 +1,61 @@
+# Temporary, isolated Testnet stack — validates the full share->block
+# pipeline against a real, mature chain (no disable_pow shortcut, real
+# Equihash) before committing real ASIC hashrate + PV power to mainnet.
+#
+# Runs the EXACT SAME production web image, just pointed at Testnet instead
+# of Mainnet — the strongest possible test, since it's byte-identical code
+# to what's actually deployed. Fully separate from docker-compose.yml: own
+# project name, own ports, own volumes, no docker.sock mount (not needed —
+# we pre-write the mining address into testnet-config/pool-config/zakura.env
+# directly rather than through the web UI, so DockerControlService's
+# restart-zakura-on-address-change feature is simply unused here).
+#
+# Usage (from the repo root):
+#   docker compose -p zec-testnet-test -f docker-compose.testnet-test.yml up -d
+#   docker logs -f zec-testnet-test_zakura_1   # watch initial sync progress
+#   ... once synced, point an ASIC at <host-ip>:3334, watch the dashboard
+#       at http://<host-ip>:3010 ...
+#   docker compose -p zec-testnet-test -f docker-compose.testnet-test.yml down
+#
+# Unlike the regtest node, this one is NOT ephemeral — testnet-config/zakura-cache
+# persists real synced chain state across restarts, same as production.
+
+services:
+  web:
+    image: toalt23/zec-mining-pool-web:latest
+    init: true
+    container_name: zec-testnet-test_web_1
+    environment:
+      ZEBRA_RPC_HOST: zec-testnet-test_zakura_1
+      ZEBRA_RPC_PORT: "18232"
+      POOL_STRATUM_PORT: "3334"
+      POOL_CONFIG_DIR: /data/pool-config
+    ports:
+      - "3010:3000"   # dashboard
+      - "3334:3334"   # stratum — point an ASIC here
+    volumes:
+      - ./testnet-config/pool-config:/data/pool-config
+    restart: "no"
+    depends_on:
+      - zakura
+
+  zakura:
+    image: zakuracore/zakura:latest
+    init: true
+    container_name: zec-testnet-test_zakura_1
+    cpus: "2.0"
+    environment:
+      ZAKURA_NETWORK__NETWORK: "Testnet"
+      ZAKURA_RPC__LISTEN_ADDR: "0.0.0.0:18232"
+      ZAKURA_RPC__ENABLE_COOKIE_AUTH: "false"
+      ZAKURA_NETWORK__LISTEN_ADDR: "0.0.0.0:18233"
+      ZAKURA_SYNC__PARALLEL_CPU_THREADS: "2"
+    env_file:
+      - path: ./testnet-config/pool-config/zakura.env
+        required: false
+    ports:
+      - "18232:18232"   # RPC — useful for direct getmininginfo/getblockchaininfo checks
+      - "18233:18233"   # P2P — not required for us to sync out, but lets testnet peers reach back in
+    volumes:
+      - ./testnet-config/zakura-cache:/home/zebra/.cache/zakura
+    restart: on-failure
