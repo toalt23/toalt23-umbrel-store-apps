@@ -104,6 +104,9 @@ async function main() {
     { capabilities: ['coinbasetxn', 'workid', 'coinbase/append'] },
   ]);
   console.log(`Template height ${template.height}, ${template.transactions.length} mempool tx(s).`);
+  console.log(`  defaultroots.blockcommitmentshash: ${template.defaultroots?.blockcommitmentshash}`);
+  console.log(`  flat blockcommitmentshash:         ${template.blockcommitmentshash}`);
+  console.log(`  defaultroots.merkleroot:           ${template.defaultroots?.merkleroot}`);
 
   // Same functions stratum.service.ts's handleSubmit()/submitFoundBlock() use
   // for a real share — only the nonce/solution inputs are placeholders here.
