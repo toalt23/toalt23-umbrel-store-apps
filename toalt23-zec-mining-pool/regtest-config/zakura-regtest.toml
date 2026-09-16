@@ -1,0 +1,40 @@
+# Config for a lone, temporary Zakura Regtest node — used only to test
+# assembleBlockHex()/NodeService.submitBlock() (see docker-compose.regtest-test.yml
+# and app/scripts/verify-regtest-submit.ts). Not used by the production app.
+#
+# `network = { params = { disable_pow = true } }` is the exact inline-table
+# form Zakura's own regtest checkpoint test uses to override just one
+# testnet-parameter field while leaving genesis hash / network magic at
+# their normal Regtest defaults (confirmed against
+# crates/zakura-network/src/config/tests/vectors.rs in the zakura-core/zakura
+# repo). Regtest can be the only network this waiver is ever authenticated
+# for (Mainnet/default-Testnet reject it outright) — so this file can never
+# accidentally weaken PoW on a real network.
+#
+# With PoW disabled, the node only checks Equihash *solution shape* (right
+# byte length for the network's (n,k) params — 36 bytes for Regtest's
+# trivial (48,5), vs 1344 for Mainnet/Testnet's (200,9)), not cryptographic
+# validity. That's deliberate: this test isn't about proving our ASIC can
+# solve Equihash (already proven live on mainnet) — it's about proving our
+# own header/coinbase byte assembly is correct.
+[network]
+network = { params = { disable_pow = true } }
+listen_addr = "0.0.0.0:18233"
+cache_dir = false
+initial_testnet_peers = []
+
+[state]
+# No chain data survives a restart — nothing to clean up beyond `docker compose down`.
+ephemeral = true
+
+[rpc]
+listen_addr = "0.0.0.0:18232"
+enable_cookie_auth = false
+
+[mining]
+internal_miner = false
+# Zakura's own hard-coded example Regtest transparent address (testnet-style
+# encoding — regtest and testnet share address encoding in Zcash). Only
+# needs to be a syntactically valid Regtest address; nothing pays out for
+# real since coins only exist on this throwaway chain.
+miner_address = "tmJymvcUCn1ctbghvTJpXBwHiMEB8P6wxNV"

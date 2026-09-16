@@ -1,0 +1,33 @@
+# Temporary, isolated Zakura Regtest node for testing the block-submit
+# pipeline (assembleBlockHex()/NodeService.submitBlock()) end-to-end.
+#
+# Completely separate from docker-compose.yml — own project name, own ports,
+# no shared volumes or network with the production pool/node. Safe to bring
+# up and tear down at any time without touching the live mainnet setup.
+#
+# Usage (from the repo root):
+#   docker compose -p zec-regtest-test -f docker-compose.regtest-test.yml up -d
+#   ... run the test script (see app/scripts/verify-regtest-submit.ts) ...
+#   docker compose -p zec-regtest-test -f docker-compose.regtest-test.yml down
+#
+# `state.ephemeral = true` in regtest-config/zakura-regtest.toml means the
+# node keeps no chain data on disk — nothing to clean up beyond `down`.
+
+version: "3.7"
+
+services:
+  zakura-regtest:
+    image: zakuracore/zakura:latest
+    init: true
+    container_name: zec-regtest-test_zakura_1
+    # Prod's docker-compose.yml never overrides Cmd (default is just
+    # ["zakurad"], driven entirely by ZAKURA_ env vars) — entrypoint.sh's
+    # job is to fix bind-mount ownership then exec this as-is, so we keep
+    # "zakurad" as the first arg and only add what's needed for a config file.
+    command: ["zakurad", "-c", "/etc/zakura/zakura-regtest.toml", "start"]
+    ports:
+      # host:container — RPC only; no P2P peers needed for a lone regtest node.
+      - "18232:18232"
+    volumes:
+      - ./regtest-config/zakura-regtest.toml:/etc/zakura/zakura-regtest.toml:ro
+    restart: "no"
