@@ -82,6 +82,23 @@ async function main() {
     console.log(`Height after generate: ${heightBefore}`);
   }
 
+  // Extra safety margin: height 2 is the first block that has to build a
+  // *real* chain-history MMR root on top of block 1's special all-zero
+  // activation root — a second activation-boundary edge case, one step on
+  // from the height-1 one above. If that's what's tripping submitblock
+  // (rather than a bug in our own code), generating a few more blocks past
+  // it via Zakura's own `generate` should get us clear of it. Controlled by
+  // MIN_HEIGHT below so this can be dialed up/down without touching the
+  // core test logic.
+  const MIN_HEIGHT = Number(process.env.REGTEST_MIN_HEIGHT ?? 5);
+  if (heightBefore < MIN_HEIGHT) {
+    const toGenerate = MIN_HEIGHT - heightBefore;
+    console.log(`Height ${heightBefore} < ${MIN_HEIGHT} — generating ${toGenerate} more block(s) via \`generate\` to get clear of early activation-boundary edge cases ...`);
+    await rpc<string[]>('generate', [toGenerate]);
+    heightBefore = await rpc<number>('getblockcount');
+    console.log(`Height after generate: ${heightBefore}`);
+  }
+
   console.log('Fetching block template ...');
   const template = await rpc<BlockTemplateResult>('getblocktemplate', [
     { capabilities: ['coinbasetxn', 'workid', 'coinbase/append'] },
