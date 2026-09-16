@@ -356,12 +356,13 @@ sudo docker run --rm --network umbrel_main_network \
    pool for one Umbrel user's own handful of ASICs, nowhere near the scale
    where that matters).
 
-   **Still open — docker-socket-proxy** (e.g. `tecnativa/docker-socket-proxy`)
-   to narrow the Docker API access `DockerControlService` has. **Note for
-   whoever/whatever picks this up next: the user did not know what this
-   was when it first came up — explain it before assuming they remember.**
-   Short version: `/var/run/docker.sock` is mounted into the web container
-   so it can restart `zakura` after an address change (see the
+   **[Decided against, 2026-09-16] docker-socket-proxy** (e.g.
+   `tecnativa/docker-socket-proxy`) to narrow the Docker API access
+   `DockerControlService` has. **Note for whoever/whatever picks this up
+   next: the user did not know what this was when it first came up —
+   explain it before assuming they remember.** Short version:
+   `/var/run/docker.sock` is mounted into the web container so it can
+   restart `zakura` after an address change (see the
    `docker-control.service.ts` architecture note above) — but the raw
    socket grants *unrestricted* Docker Engine API access, i.e. anything
    Docker can do (start/stop/delete any container, read other containers'
@@ -372,11 +373,12 @@ sudo docker run --rm --network umbrel_main_network \
    (`POST /containers/toalt23-zec-mining-pool_zakura_1/restart`) so a
    compromised app container (e.g. via a stratum-parsing bug, since that
    port takes input from arbitrary LAN devices) is contained to "can
-   restart zakura" instead of "owns the whole host". Left open rather than
-   done or dropped: real risk here is lower for a private single-user pool
-   than for a multi-tenant service, so it's a nice-to-have hardening step,
-   not urgent — revisit if this ever gets more exposed (e.g. shared beyond
-   the user's own LAN).
+   restart zakura" instead of "owns the whole host". Explicitly decided
+   against rather than left open: this stays a private pool that never
+   leaves the user's own LAN, same reasoning as vardiff/nonce1Counter
+   above — the added container/config complexity isn't worth it at this
+   scale. Revisit if this ever gets more exposed (e.g. shared beyond the
+   user's own LAN).
 
 ## UI restructuring + dashboard polish (2026-09-02 – 2026-09-04, 1.5.3 → 1.7.1)
 
