@@ -628,3 +628,30 @@ this single check covers both problems: a truly dead connection ages out
 in ≤165s (150s + one 15s tick) instead of ~12 minutes, and an idle
 standby/duplicate connection that never submits a real share ages out the
 same way, leaving only the one connection actually being mined on visible.
+
+### Follow-up, same day, found in the field right after 1.8.5 shipped (1.8.6)
+
+Live-tested against the real Z9 mini: pulled the LAN cable, confirmed the
+dashboard cleared after ~2.5 minutes (1.8.5 working as intended), plugged
+the cable back in — **and briefly saw the same worker listed twice again.**
+Logs showed the Z9 mini's own firmware opens *two* simultaneous stratum
+TCP connections on every reconnect, both authorizing as `Z9_mini` from the
+same IP. Sometimes it closes the redundant one itself within the same
+second; other times both persist for a minute or more before the miner
+closes both together and reconnects with a fresh pair (confirmed in the
+logs: no `Pruning stale connection` line before either close, and the gap
+was well under 150s, so this wasn't 1.8.5's sweep — the miner did it
+itself). Either way, 1.8.5's 150s sweep would eventually clean it up, but
+that's up to 150s of a phantom duplicate worker showing on every reconnect.
+
+**Fix:** `handleAuthorize()` now also scans for any other still-open
+connection with the same `(remoteAddress, workerName)` pair and
+immediately `socket.destroy()`s it, rather than waiting on the 150s sweep.
+Reasoned safe rather than just assumed: this only ever closes *our side*
+of the older TCP connection — the ASIC's chips keep hashing regardless of
+socket state — and if the older connection actually was still in active
+use, the miner's own reconnect logic (which it demonstrably already has,
+and uses routinely per the logs above) picks it back up within seconds,
+same as any other ordinary network blip. The 150s sweep from 1.8.5 stays
+in place as a backstop for whatever this doesn't catch (e.g. a dead peer
+that never re-authorizes at all).
