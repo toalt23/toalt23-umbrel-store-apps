@@ -122,6 +122,15 @@ const SHARE_WINDOW_MS = 10 * 60 * 1000;
 const HASHRATE_HISTORY_SAMPLE_MS = 15 * 1000;
 const HASHRATE_HISTORY_RETENTION_MS = 8 * 60 * 60 * 1000;
 const MAX_JOBS_RETAINED = 6;
+// A connection this long without submitting a share is pruned — covers both
+// a genuinely dead peer (TCP keepalive alone can take much longer than this
+// to notice on Linux: setKeepAlive() only sets the idle delay, not the probe
+// interval/count, which stay at OS defaults) and a still-open-but-idle
+// connection, e.g. a miner configured with multiple identical fallback pool
+// entries that all land here — only the one actually being mined on submits
+// shares, so the redundant standby connections age out here instead of
+// sitting in the dashboard as phantom extra workers.
+const STALE_CONNECTION_MS = 150 * 1000;
 const MAX_LINE_LENGTH = 65536;
 const LONGPOLL_MIN_BACKOFF_MS = 1000;
 const LONGPOLL_MAX_BACKOFF_MS = 30000;
@@ -289,11 +298,18 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  /** Ticks every HASHRATE_HISTORY_SAMPLE_MS, snapshotting each connected worker's live hashrate into its own history buffer and trimming anything past the retention window. */
+  /** Ticks every HASHRATE_HISTORY_SAMPLE_MS: prunes connections that have gone STALE_CONNECTION_MS without a share, and snapshots each remaining connected worker's live hashrate into its own history buffer, trimming anything past the retention window. */
   private sampleHashrateHistory() {
     const now = Date.now();
     const cutoff = now - HASHRATE_HISTORY_RETENTION_MS;
     for (const c of this.connections.values()) {
+      if (now - (c.lastShareAt ?? c.connectedAt) > STALE_CONNECTION_MS) {
+        this.logger.log(
+          `Pruning stale connection: session ${c.sessionId}${c.workerName ? ` (${c.workerName})` : ''} — no share for over ${STALE_CONNECTION_MS / 1000}s`,
+        );
+        c.socket.destroy();
+        continue;
+      }
       if (!c.workerName) continue;
       c.hashrateHistory.push({
         t: now,

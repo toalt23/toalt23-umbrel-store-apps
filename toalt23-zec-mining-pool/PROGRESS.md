@@ -341,13 +341,39 @@ sudo docker run --rm --network umbrel_main_network \
    own MMR/history-tree code — diminishing returns for a pool-app project,
    and would end at an upstream bug report either way, not a change here.
 
-   **Net effect on the original risk:** confidence in
+   **Net effect on the original risk (as of 2026-09-16):** confidence in
    `assembleBlockHex()`/`submitBlock()` is now higher than the ~85-90%
    estimated on 2026-09-02 — the one-block round trip that was never
    exercised end-to-end now has been, successfully. Still not proven
    end-to-end against a *second consecutive real submission*, but that gap
    is now understood to sit in Zakura's own Regtest-only history-tree
    bookkeeping, not in anything this pool controls.
+
+   **[Fully closed, 2026-09-17] — real Testnet block accepted, no shortcuts.**
+   Motivation: user about to add a second ASIC (Antminer A9 Zmaster, ~50
+   kSol/s, alongside the existing Z9 mini) and wanted real confidence
+   before committing months of solar-powered mainnet mining toward an
+   actual block find. Built `docker-compose.testnet-test.yml` — the exact
+   production web image, pointed at a real, fully-synced Zakura **Testnet**
+   node (`network = "Testnet"`, no `disable_pow` waiver, real Equihash
+   (200,9)) instead of the Regtest shortcut. Mining address/coinbase tag
+   pre-written into `testnet-config/pool-config/zakura.env` directly
+   (bypasses the web UI, which only validates mainnet address prefixes).
+   Initial sync took ~15 hours wall-clock (fast ~178 blocks/s during
+   checkpoint verification, dropping to ~7 blocks/s for full validation
+   near the tip). Checked live network difficulty via `getmininginfo`
+   once synced: `networksolps: 12423` — Testnet's *entire* network hashrate
+   was only ~12.4 kSol/s, meaning the Z9 mini alone was already a large
+   fraction of it. Connected the Z9 mini to the test stratum port; **a
+   real block (height 4359189) was found and accepted within ~5 minutes**,
+   through the actual unmodified `stratum.service.ts` → `submitFoundBlock()`
+   → `assembleBlockHex()` → `NodeService.submitBlock()` path — the same
+   code that runs in production, no test-script shortcuts this time. This
+   is the strongest possible confirmation: real ASIC, real Equihash
+   solution, real mature chain, zero code differences from what's actually
+   deployed. Torn down afterward (`testnet-config/zakura-cache` deleted);
+   `docker-compose.testnet-test.yml` kept in the repo as reusable tooling
+   for a future re-validation if ever needed.
 5. **[Decided against, 2026-08-29]** ~~Splitting the stratum server into its
    own container~~ and ~~vardiff instead of fixed presets~~ — both dropped,
    not worth it for a small private pool on the user's own hardware.
@@ -563,3 +589,42 @@ unverified and the disconnects are a worse problem than the churn.
 mini's actual watchdog threshold turns out to be) rather than reopening
 1.7.2's throttling — but that needs live confirmation it doesn't itself
 trigger restarts before it's worth trying again.
+
+*(Versions 1.8.0–1.8.4, 2026-09-12: a same-day series of dashboard UI/behavior
+batches — per-worker hashrate chart, stat reordering, Miner tab renamed to
+Pool, chart Y-axis/hover polish, a real bug fix for chart blur on tab
+switch. Not detailed here — see git log `fee61295..11925fb4` for the
+individual commits if you need the specifics; nothing here changes any of
+the architecture/behavior notes above.)*
+
+## Stale/duplicate worker connections not pruned correctly (2026-09-17, 1.8.5)
+
+The 1.7.4 fix (`socket.setKeepAlive(true, 30000)`) was documented as
+detecting a dead peer "in ~30s" — **that was wrong.** Node's
+`setKeepAlive(true, delay)` only sets the idle time before the *first*
+keepalive probe; it has no way to set the probe *interval* or *count*,
+which stay at OS defaults (Linux: 75s interval, 9 probes). Real time to
+notice a genuinely silent dead peer (power loss, cable pull, nothing ever
+answers) is therefore idle-delay + interval × probes ≈ 30s + 75s×9 ≈
+**~12 minutes**, not 30s. A clean TCP close, or a NAT/router that
+actively sends a RST, is still detected immediately either way — only the
+fully-silent case was ever ~12 minutes, not ~30s.
+
+Separately, the user hit a related but distinct case: an ASIC configured
+with multiple *identical* fallback pool entries (e.g. all 3 slots pointing
+at the same pool address) opens one stratum connection per configured
+slot, so the same physical miner showed up 3× in the dashboard — only one
+of which is ever actually mining (the others sit subscribed/authorized but
+never submit a real accepted share).
+
+**Fix:** a single mechanism in `stratum.service.ts`'s existing 15s
+hashrate-sampling tick (`sampleHashrateHistory()`, already iterates every
+connection) now also checks `now - (lastShareAt ?? connectedAt)` against a
+new `STALE_CONNECTION_MS` (150s) and calls `socket.destroy()` on anything
+over that — which the existing `'close'` handler already removes from the
+`connections` Map (and so from the dashboard) with no further plumbing
+needed. `lastShareAt` is only ever set on a genuinely *accepted* share, so
+this single check covers both problems: a truly dead connection ages out
+in ≤165s (150s + one 15s tick) instead of ~12 minutes, and an idle
+standby/duplicate connection that never submits a real share ages out the
+same way, leaving only the one connection actually being mined on visible.
