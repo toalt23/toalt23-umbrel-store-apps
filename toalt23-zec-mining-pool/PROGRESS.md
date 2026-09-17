@@ -655,3 +655,40 @@ and uses routinely per the logs above) picks it back up within seconds,
 same as any other ordinary network blip. The 150s sweep from 1.8.5 stays
 in place as a backstop for whatever this doesn't catch (e.g. a dead peer
 that never re-authorizes at all).
+
+### Reverted the same day, live on the real Z9 mini (1.8.7) — the "safe" reasoning above was wrong
+
+1.8.6 was deployed and field-tested. Result: a genuine reconnect-storm
+feedback loop, not the brief reconnect blip that was reasoned through
+above. Logs showed hundreds of connect/authorize/supersede/disconnect
+cycles per second, all from the same IP, none lasting long enough to ever
+receive a job and submit a real share — an actual mining outage, only
+resolved by power-cycling the miner.
+
+**What actually happens:** this Z9 mini's firmware keeps *two* persistent
+connections to the same pool concurrently as normal operation (matches
+the original duplicate-connection observation this fix was meant to
+address). When `destroy()` closes one of them, the firmware's own
+watchdog treats that exactly like a real connection loss and reconnects
+*immediately* (milliseconds, not the "seconds" assumed above) — and that
+brand-new connection's own authorize immediately finds the *other*
+survivor as "older" and destroys it in turn, which triggers *its*
+reconnect, forever. The failure mode wasn't "kill the wrong one, miner
+recovers in a few seconds" as reasoned — it was "kill either one, and the
+resulting reconnect keeps re-triggering the same kill, indefinitely."
+
+**Lesson for next time:** reasoning through a "should be safe because X
+recovers on its own" argument is not a substitute for testing against
+real hardware before or immediately after shipping something that closes
+live connections proactively — especially when the *cause* of closing a
+connection (a destroy()) can itself look identical to the *problem* the
+fix is meant to clean up (a connection dying), creating exactly this kind
+of self-sustaining loop. A periodic, time-based sweep (1.8.5's approach)
+doesn't have this failure mode because it never fires as a direct,
+synchronous reaction to another connection's own connect/authorize event.
+
+**Reverted:** removed the immediate-supersede scan from `handleAuthorize()`
+entirely (and the now-unused `remoteAddress` field it needed). Back to
+relying solely on 1.8.5's 150s periodic sweep — up to 150s of a duplicate
+worker showing in the dashboard is a far smaller problem than a mining
+outage requiring physical intervention.

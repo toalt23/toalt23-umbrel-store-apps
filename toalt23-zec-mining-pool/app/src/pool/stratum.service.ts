@@ -61,7 +61,6 @@ interface HashrateSample {
 interface WorkerConnection {
   socket: net.Socket;
   sessionId: string;
-  remoteAddress: string;
   nonce1: Buffer;
   subscribed: boolean;
   workerName?: string;
@@ -554,7 +553,6 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     const conn: WorkerConnection = {
       socket,
       sessionId,
-      remoteAddress: socket.remoteAddress ?? 'unknown',
       nonce1,
       subscribed: false,
       presetKey: DEFAULT_PRESET_KEY,
@@ -671,27 +669,15 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     conn.presetKey = preset.key;
     conn.shareDifficulty = preset.shareDifficulty;
 
-    // Same physical miner, same worker name reconnecting (or one submitting
-    // from >1 simultaneous connection, e.g. several identical fallback pool
-    // entries all pointing back here) — drop any other still-open connection
-    // with this exact (IP, worker name) pair right away instead of waiting
-    // on the STALE_CONNECTION_MS sweep. Safe: we only ever close our own
-    // side of the older TCP connection, never touch the miner's actual
-    // hashing — if it was genuinely still in use, the miner's own reconnect
-    // logic (which every miner already has, for routine network blips)
-    // picks it back up in seconds.
-    for (const other of this.connections.values()) {
-      if (
-        other !== conn &&
-        other.remoteAddress === conn.remoteAddress &&
-        other.workerName === name
-      ) {
-        this.logger.log(
-          `Superseding older connection for ${name}@${conn.remoteAddress}: session ${other.sessionId} -> ${conn.sessionId}`,
-        );
-        other.socket.destroy();
-      }
-    }
+    // REVERTED (1.8.7, 2026-09-17) — immediately destroying an older same-
+    // (IP, workerName) connection here caused a live reconnect storm on the
+    // real Z9 mini: its firmware treats the RST from destroy() as its own
+    // connection dying and reconnects instantly, which then immediately
+    // supersedes *this* connection, forever, hundreds of times a second,
+    // until the miner was power-cycled. See PROGRESS.md for the full
+    // writeup. Back to relying solely on STALE_CONNECTION_MS's periodic
+    // sweep (sampleHashrateHistory()) — up to 150s of a duplicate showing
+    // in the dashboard is a far smaller problem than a mining outage.
 
     this.sendResult(conn, id, true);
     this.logger.log(
