@@ -225,14 +225,6 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     for (const conn of this.connections.values()) conn.socket.destroy();
   }
 
-  /** User-triggered reset of the best-share record only — leaves blocksFound and per-worker stats untouched. */
-  async resetBestShare(): Promise<void> {
-    this.bestShareDifficultyEver = 0;
-    this.bestShareDifficultyWorker = undefined;
-    this.bestShareDifficultyAt = undefined;
-    await this.persistStats();
-  }
-
   getStatus(): PoolStatus {
     const now = Date.now();
     return {

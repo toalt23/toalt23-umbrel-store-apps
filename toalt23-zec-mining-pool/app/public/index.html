@@ -132,7 +132,7 @@
     .worker-row .worker-name,
     .worker-row .worker-hashrate { font-size: 1.15rem; font-weight: 700; color: #ffffff; text-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
     .worker-row .worker-bottom { margin-top: 3px; }
-    .worker-row .worker-shares { font-size: 0.82rem; color: var(--text-secondary); }
+    .worker-row .worker-shares { font-size: 0.82rem; color: var(--text-secondary); position: relative; top: -2px; }
     .worker-row .worker-shares-ok { color: var(--green); }
     .worker-row .worker-shares-bad { color: var(--red); }
 
@@ -211,7 +211,6 @@
       font-family: inherit;
     }
     .config-row button:disabled { opacity: 0.6; cursor: default; }
-    .config-row button.danger-button { background: transparent; border: 1px solid var(--red); color: var(--red); }
     .config-msg { font-size: 0.78rem; margin-top: 8px; min-height: 1.1em; }
     .config-msg.error { color: var(--red); }
     .config-msg.success { color: var(--green); }
@@ -228,6 +227,17 @@
     }
     .template-error-banner.hidden { display: none; }
     .template-error-sub { margin-top: 6px; opacity: 0.85; font-size: 0.8rem; }
+    .no-address-banner {
+      background: rgba(251, 191, 36, 0.12);
+      border: 1px solid var(--amber);
+      color: var(--amber);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .no-address-banner.hidden { display: none; }
 
     .connect-section .section-heading { font-size: 1rem; color: var(--text-secondary); margin-bottom: 12px; }
     .connect-section ol { margin: 0; padding-left: 20px; font-size: 0.86rem; line-height: 1.6; color: var(--text); }
@@ -304,6 +314,7 @@
     .modal-btn { border: none; border-radius: 8px; padding: 9px 16px; font-weight: 600; font-size: 0.86rem; cursor: pointer; font-family: inherit; }
     .modal-btn-secondary { background: var(--card-alt); color: var(--text); }
     .modal-btn-danger { background: transparent; border: 1px solid var(--red); color: var(--red); }
+    .modal-btn-primary { background: var(--gold-2); color: #1a1a22; }
   </style>
 </head>
 <body>
@@ -340,6 +351,9 @@
     </nav>
 
     <section id="tab-miner" class="card">
+      <div class="no-address-banner hidden" id="noAddressBanner">
+        ⚠️ No payout address set yet — miners can connect, but no reward has anywhere to go. Set one in the Configuration tab.
+      </div>
       <div class="template-error-banner hidden" id="templateErrorBanner">
         <div id="templateErrorMain"></div>
         <div class="template-error-sub" id="templateErrorSub"></div>
@@ -429,14 +443,6 @@
         </div>
         <div class="config-msg" id="minerAddressMsg"></div>
       </div>
-
-      <div class="config-section">
-        <label>Pool's best share</label>
-        <div class="config-row">
-          <button id="resetBestShareBtn" class="danger-button">Reset</button>
-        </div>
-        <div class="config-msg" id="resetBestShareMsg"></div>
-      </div>
     </section>
 
     <div class="modal-overlay hidden" id="confirmOverlay">
@@ -458,7 +464,7 @@
         <div class="modal-body" id="confirmMessage"></div>
         <div class="modal-actions">
           <button id="confirmCancel" class="modal-btn modal-btn-secondary">Cancel</button>
-          <button id="confirmOk" class="modal-btn modal-btn-danger">Reset</button>
+          <button id="confirmOk" class="modal-btn"></button>
         </div>
       </div>
     </div>
@@ -893,6 +899,8 @@
         document.getElementById('connectUrl').textContent =
           "stratum+tcp://<this node's IP>:" + data.stratumPort;
 
+        document.getElementById('noAddressBanner').classList.toggle('hidden', data.payoutAddressConfigured);
+
         const templateErrorBanner = document.getElementById('templateErrorBanner');
         if (data.lastTemplateError) {
           document.getElementById('templateErrorMain').textContent =
@@ -1061,6 +1069,12 @@
         return;
       }
 
+      const confirmed = await showConfirmDialog(
+        'Saving will restart the node to apply the change. Continue?',
+        'Save',
+      );
+      if (!confirmed) return;
+
       button.disabled = true;
       setMinerAddressMsg('Saving …', null);
       try {
@@ -1089,12 +1103,14 @@
     });
 
     // Styled stand-in for window.confirm() — resolves true/false, same as confirm() would.
-    function showConfirmDialog(message) {
+    function showConfirmDialog(message, confirmLabel, danger) {
       return new Promise((resolve) => {
         const overlay = document.getElementById('confirmOverlay');
         const okBtn = document.getElementById('confirmOk');
         const cancelBtn = document.getElementById('confirmCancel');
         document.getElementById('confirmMessage').textContent = message;
+        okBtn.textContent = confirmLabel || 'OK';
+        okBtn.className = 'modal-btn ' + (danger ? 'modal-btn-danger' : 'modal-btn-primary');
         overlay.classList.remove('hidden');
 
         function cleanup(result) {
@@ -1113,39 +1129,6 @@
         overlay.addEventListener('click', onOverlayClick);
       });
     }
-
-    let resetBestShareMsgTimer = null;
-
-    function setResetBestShareMsg(text, kind) {
-      const msg = document.getElementById('resetBestShareMsg');
-      if (resetBestShareMsgTimer) clearTimeout(resetBestShareMsgTimer);
-      msg.textContent = text;
-      msg.className = 'config-msg' + (kind ? ' ' + kind : '');
-      if (kind === 'success') {
-        resetBestShareMsgTimer = setTimeout(() => {
-          msg.textContent = '';
-          msg.className = 'config-msg';
-        }, 6000);
-      }
-    }
-
-    document.getElementById('resetBestShareBtn').addEventListener('click', async () => {
-      const confirmed = await showConfirmDialog("Reset Pool's best share? This cannot be undone.");
-      if (!confirmed) return;
-      const button = document.getElementById('resetBestShareBtn');
-      button.disabled = true;
-      setResetBestShareMsg('Resetting …', null);
-      try {
-        const res = await fetch('/api/pool/reset-best-share', { method: 'POST' });
-        if (!res.ok) throw new Error('request failed');
-        setResetBestShareMsg('Best share was reset', 'success');
-        updatePoolStatus();
-      } catch (e) {
-        setResetBestShareMsg('Could not reach the server.', 'error');
-      } finally {
-        button.disabled = false;
-      }
-    });
 
     updateStatus();
     updatePoolStatus();

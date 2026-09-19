@@ -29,8 +29,12 @@ export class PoolController {
   ) {}
 
   @Get('status')
-  getStatus(): PoolStatus {
-    return this.stratumService.getStatus();
+  async getStatus(): Promise<PoolStatus & { payoutAddressConfigured: boolean }> {
+    const config = await this.poolConfigService.getStatus();
+    return {
+      ...this.stratumService.getStatus(),
+      payoutAddressConfigured: config.configured,
+    };
   }
 
   @Get('config')
@@ -77,11 +81,5 @@ export class PoolController {
       throw new BadRequestException('range must be one of 1h, 8h, 24h');
     }
     return this.stratumService.getWorkerHashrateHistory(worker, rangeMs);
-  }
-
-  @Post('reset-best-share')
-  async resetBestShare(): Promise<{ ok: true }> {
-    await this.stratumService.resetBestShare();
-    return { ok: true };
   }
 }
