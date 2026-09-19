@@ -23,6 +23,9 @@
       --amber: #fbbf24;
     }
     * { box-sizing: border-box; }
+    /* Always reserve scrollbar space so content height changes (tab switch, "Show More")
+       don't make a scrollbar pop in/out and shift the centered .app sideways. */
+    html { scrollbar-gutter: stable; }
     body {
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
