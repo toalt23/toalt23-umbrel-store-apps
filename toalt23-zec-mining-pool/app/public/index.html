@@ -91,20 +91,11 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
-    /* Pool tab only — Node/Configuration tabs keep the narrower 2-column grid, they don't have enough tiles to benefit from 3.
-       minmax(0, 1fr), not bare 1fr: grid tracks default to min-width:auto, which refuses to
-       shrink a column below its content's intrinsic width and overflows the viewport on
-       narrow phones instead of wrapping — confirmed via real headless-Chromium screenshots
-       at 360px before this fix (horizontal overflow) and after (correctly wraps in place). */
+    /* Pool tab only. minmax(0,1fr) not bare 1fr — bare 1fr overflows on narrow phones instead of wrapping (min-width:auto). */
     #minerContent .stats {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
-    /* Phone-only: the 3-column Pool grid has plenty of room on tablet/desktop widths (up
-       to 750px container), but on real phones the longer values ("149.00 kSol/s", "12.22
-       K / 228.22 M") wrap mid-word across 3-4 lines at the default size — confirmed via
-       headless-Chromium screenshots at 360/390/428px. Shrinking just this grid's value
-       font on narrow screens keeps more of them on one line without touching the rest of
-       the UI or the desktop layout. */
+    /* Phone-only: longer values wrap mid-word at the default size on narrow screens (confirmed via screenshots). */
     @media (max-width: 480px) {
       #minerContent .stats .stat-value {
         font-size: 1rem;
@@ -156,7 +147,7 @@
       cursor: pointer;
       user-select: none;
     }
-    .worker-chart-toggle .chevron { font-size: 1.2rem; color: var(--gold-2); }
+    .worker-chart-toggle .chevron { font-size: 1.6rem; color: var(--gold-2); position: relative; top: -3px; }
     .worker-chart { margin-top: 16px; }
     .worker-chart.hidden { display: none; }
     .chart-range-row { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -351,17 +342,16 @@
       </div>
       <div id="minerContent" class="hidden">
         <div class="stats">
-          <div class="stat"><div class="stat-label">Network Hashrate</div><div class="stat-value" id="minerNetworkHashrate">–</div></div>
-          <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="minerDifficulty">–</div></div>
           <div class="stat"><div class="stat-label">Pool Hashrate</div><div class="stat-value" id="poolHashrate">–</div></div>
           <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
+          <div class="stat"><div class="stat-label">Pool Effort</div><div class="stat-value" id="poolEffort">–</div></div>
+          <div class="stat"><div class="stat-label">Current Difficulty</div><div class="stat-value" id="minerDifficulty">–</div></div>
           <div class="stat">
             <div class="stat-label">Best Share</div>
             <div class="stat-value" id="bestShareValue">–</div>
             <div class="stat-sub" id="bestShareAgo"></div>
           </div>
           <div class="stat"><div class="stat-label">Blocks Found</div><div class="stat-value" id="blocksFound">–</div></div>
-          <div class="stat"><div class="stat-label">Pool Effort</div><div class="stat-value" id="poolEffort">–</div></div>
         </div>
         <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
       </div>
@@ -422,7 +412,7 @@
         <div class="config-row">
           <input type="text" id="minerAddressInput" placeholder="t1… / t3… / zs1… / u1…" autocomplete="off" spellcheck="false">
         </div>
-        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (max 86 bytes — multi-byte characters like emoji or accents count for more than 1)</label>
+        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (max 86 bytes)</label>
         <div class="config-row">
           <input type="text" id="coinbaseTagInput" placeholder="mined by …" autocomplete="off" spellcheck="false" maxlength="200">
         </div>
@@ -472,15 +462,8 @@
   </div>
 
   <script>
-    // The Pool tab's worker list (and its charts) gets rebuilt by the 10s
-    // poll regardless of which tab is currently showing. Drawing a chart
-    // while its canvas sits inside a display:none section reads
-    // clientWidth as 0, so it falls back to a guessed width — when the tab
-    // becomes visible again the canvas's actual CSS width no longer
-    // matches the bitmap resolution it was drawn at, and the browser
-    // stretches it, which is the blur/scale glitch. Fix: skip drawing
-    // while hidden, and force one correct-sized redraw the moment the tab
-    // becomes visible again instead of waiting for the next poll tick.
+    // Drawing while the canvas is display:none reads clientWidth as 0 (blur/scale glitch
+    // on reveal). Fix: skip drawing while hidden, force one redraw when the tab reappears.
     function isPoolTabVisible() {
       const section = document.getElementById('tab-miner');
       return !!section && section.style.display !== 'none';
@@ -598,12 +581,9 @@
 
           document.getElementById('difficulty').textContent =
             data.difficulty != null ? formatShortNumber(Number(data.difficulty)) : '–';
-          // Same two values, mirrored onto the Miner tab's own tiles (see below) —
-          // no separate fetch, this poll already has everything they need.
+          // Mirrored onto the Miner tab's tiles too — no separate fetch needed.
           document.getElementById('minerDifficulty').textContent =
             data.difficulty != null ? formatShortNumber(Number(data.difficulty)) : '–';
-          document.getElementById('minerNetworkHashrate').textContent =
-            formatSol(data.networkSolps) ?? '–';
 
           setStat('hashrate', 'hashrateStat', formatSol(data.networkSolps));
           setStat('peers', 'peersStat', data.peers != null ? String(data.peers) : null);
@@ -655,9 +635,7 @@
       return v.toFixed(2) + ' ' + units[i];
     }
 
-    // Same short-number format as the node's own difficulty stat (formatShortNumber
-    // above), so a share's difficulty reads on the same scale a user already
-    // recognizes (e.g. "12.22 K" next to a network difficulty of "228.22 M").
+    // Same scale as the node's own difficulty stat, e.g. "12.22 K" next to "228.22 M".
     function formatDifficulty(d) {
       if (!d) return '0';
       return formatShortNumber(d);
@@ -675,18 +653,14 @@
       return diffDays + (diffDays === 1 ? ' day ago' : ' days ago');
     }
 
-    // Per-worker chart UI state (expanded/collapsed + selected range), kept
-    // outside the render loop since workerList's DOM is fully rebuilt on
-    // every 10s poll — without this the accordion would snap shut on every
-    // refresh. Deliberately not persisted anywhere: a worker disconnecting
-    // means its entry (and the server-side history behind it) is gone
-    // anyway, so there's nothing meaningful to remember past that.
+    // Per-worker chart state, kept outside the render loop (workerList's DOM rebuilds every
+    // poll) so the accordion doesn't snap shut. Not persisted — nothing to remember once a worker disconnects.
     const workerChartState = {};
-    const HASHRATE_CHART_RANGES = ['15m', '1h', '8h'];
+    const HASHRATE_CHART_RANGES = ['1h', '8h', '24h'];
 
     function getWorkerChartState(workerName) {
       if (!workerChartState[workerName]) {
-        workerChartState[workerName] = { expanded: false, range: '15m' };
+        workerChartState[workerName] = { expanded: false, range: '1h' };
       }
       return workerChartState[workerName];
     }
@@ -719,9 +693,7 @@
       });
     }
 
-    // "Nice round number" step for an axis — same idea D3/most charting libs
-    // use, so a range like 5k-25k gets clean 5k-spaced gridlines (5/10/15/
-    // 20/25k) instead of awkward fractions of the raw span.
+    // "Nice round number" step (D3-style) — clean 5k-spaced gridlines instead of awkward fractions.
     function niceStep(rawStep) {
       const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
       const residual = rawStep / magnitude;
@@ -738,9 +710,7 @@
       return ticks.length ? ticks : [axisMin, axisMax];
     }
 
-    // Single shared tooltip element reused by every worker's chart — cheaper
-    // than creating/destroying one per canvas, and canvases get torn down
-    // and recreated wholesale every 10s poll anyway.
+    // Single shared tooltip reused by every chart — cheaper than one per canvas.
     let chartTooltipEl;
     function getChartTooltip() {
       if (!chartTooltipEl) {
@@ -800,20 +770,11 @@
         return;
       }
 
-      // Y-axis is fit to this worker's own observed range, not a fixed
-      // preset span — a worker sitting steadily at 5-12 kSol/s shouldn't
-      // have its curve squashed into a chart that reserves headroom up to
-      // a preset's typical ceiling it never comes near. Padded by 15% of
-      // the observed swing (or 10% of the value itself when the line has
-      // been essentially flat) so the curve doesn't touch the top/bottom
-      // edge, and clamped at 0 since a hashrate can't go negative.
+      // Y-axis always starts at 0 (never adaptive) — only the top is fit to this worker's own observed max, padded 15%.
       const hrs = points.map((p) => p.hr);
-      const dataMin = Math.min(...hrs);
       const dataMax = Math.max(...hrs);
-      const dataSpan = dataMax - dataMin;
-      const pad = dataSpan > 0 ? dataSpan * 0.15 : Math.max(dataMax * 0.1, 500);
-      const axisMin = Math.max(0, dataMin - pad);
-      const axisMax = dataMax + pad;
+      const axisMin = 0;
+      const axisMax = dataMax * 1.15;
       const axisRange = Math.max(axisMax - axisMin, 1);
       const minT = points[0].t;
       const spanT = Math.max(points[points.length - 1].t - minT, 1);
@@ -821,9 +782,7 @@
       const yToPixel = (hr) => topPad + plotHeight - ((hr - axisMin) / axisRange) * plotHeight;
       const xToPixel = (t) => leftPad + ((t - minT) / spanT) * plotWidth;
 
-      // Y-axis: nice round-number gridlines + kSol/s labels on the left —
-      // step size adapts to the axis span (5k steps for a tight low-preset
-      // range, coarser for medium/high) instead of a fixed tick count.
+      // Y-axis: nice round-number gridlines, step size adapts to the axis span.
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
       ctx.lineWidth = 1;
       ctx.fillStyle = 'rgba(184, 184, 194, 0.75)';
@@ -836,9 +795,7 @@
         ctx.fillText(formatKSolShort(value), 0, Math.min(Math.max(y + 3, 8), cssHeight - bottomPad));
       });
 
-      // X-axis: 5 evenly-spaced time-of-day labels (Berlin), no date. The
-      // same 5 target times are reused below to place one hover-able dot
-      // per sector on the line, snapped to the nearest real sample.
+      // X-axis: 5 evenly-spaced time-of-day labels (Berlin), reused below for the hover dots.
       const X_TICKS = 5;
       const xTickTimes = [];
       for (let i = 0; i < X_TICKS; i++) {
@@ -852,8 +809,24 @@
         ctx.fillText(label, labelX, cssHeight - 2);
       }
 
-      // Hashrate line.
+      // Hashrate line, with a gradient fill down to the (always-0) axis, fading out toward the bottom.
       const goldColor = getComputedStyle(document.documentElement).getPropertyValue('--gold-2').trim() || '#fdce58';
+      const axisY = topPad + plotHeight;
+      const fillGradient = ctx.createLinearGradient(0, topPad, 0, axisY);
+      fillGradient.addColorStop(0, goldColor + '4d');
+      fillGradient.addColorStop(1, goldColor + '00');
+      ctx.beginPath();
+      points.forEach((p, i) => {
+        const x = xToPixel(p.t);
+        const y = yToPixel(p.hr);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.lineTo(xToPixel(points[points.length - 1].t), axisY);
+      ctx.lineTo(xToPixel(points[0].t), axisY);
+      ctx.closePath();
+      ctx.fillStyle = fillGradient;
+      ctx.fill();
+
       ctx.beginPath();
       points.forEach((p, i) => {
         const x = xToPixel(p.t);
@@ -864,9 +837,7 @@
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      // One hover-able dot per X-axis sector, snapped to the nearest real
-      // sample for that target time (deduped in case two sectors land on
-      // the same sample in a sparsely-sampled range).
+      // One hover-able dot per sector, snapped to the nearest sample (deduped if sparse).
       const anchors = [];
       const seenTimes = new Set();
       xTickTimes.forEach((targetT) => {
@@ -970,7 +941,7 @@
               '</div>' +
               '<div class="worker-chart-toggle">' +
                 '<span class="chevron">' + (chartState.expanded ? '▴' : '▾') + '</span>' +
-                '<span>More details</span>' +
+                '<span>Show Metrics</span>' +
               '</div>' +
               '<div class="worker-chart' + (chartState.expanded ? '' : ' hidden') + '">' +
                 '<div class="chart-range-row">' +
@@ -1061,11 +1032,9 @@
         setMinerAddressMsg('Enter an address first.', 'error');
         return;
       }
-      // Mirrors the backend's exact rule (Buffer.byteLength(tag, 'utf8') <= 86 in
-      // pool-config.service.ts) so multi-byte characters (emoji, accents, CJK) are
-      // caught here instead of only after a round trip to the server.
+      // Mirrors pool-config.service.ts's exact byte-length rule, catching it before a round trip.
       if (new TextEncoder().encode(coinbaseTag).length > 86) {
-        setMinerAddressMsg('Coinbase tag is too long (max 86 bytes — multi-byte characters count for more than 1).', 'error');
+        setMinerAddressMsg('Coinbase tag is too long (max 86 bytes).', 'error');
         return;
       }
 

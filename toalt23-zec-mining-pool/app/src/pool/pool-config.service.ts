@@ -8,11 +8,8 @@ export interface PoolConfigStatus {
   configured: boolean;
 }
 
-// Deliberately loose — checks known Zcash mainnet address prefixes plus a
-// plausible charset/length, NOT a full base58check/bech32 checksum. Good
-// enough to catch typos/garbage pasted into the form; a malformed-but-
-// prefix-matching address still just gets rejected by the node itself the
-// next time it tries to build a coinbase with it.
+// Deliberately loose — prefix/length check only, not a full checksum. Catches typos;
+// a malformed-but-matching address still gets rejected by the node itself later.
 const ADDRESS_PATTERNS: RegExp[] = [
   /^t1[a-km-zA-HJ-NP-Z1-9]{33}$/, // transparent P2PKH
   /^t3[a-km-zA-HJ-NP-Z1-9]{33}$/, // transparent P2SH
@@ -24,10 +21,8 @@ const ADDRESS_KEY = 'ZAKURA_MINING__MINER_ADDRESS';
 const COINBASE_TAG_KEY = 'ZAKURA_MINING__EXTRA_COINBASE_DATA';
 // Zebra's own limit — it appends this after its own emoji marker in the coinbase.
 const MAX_COINBASE_TAG_BYTES = 86;
-// Rejects the tag rather than sanitizing it: this value gets written as a raw
-// "KEY=VALUE" line in zakura.env, so a newline in it would let someone inject
-// arbitrary additional env vars into that file. Blank/space/etc. are fine —
-// only actual control characters (newlines, tabs, null bytes, ...) are barred.
+// Rejects rather than sanitizes: this gets written as a raw "KEY=VALUE" line in
+// zakura.env, so a newline could inject extra env vars. Only control chars are barred.
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHAR_PATTERN = /[\x00-\x1f\x7f]/;
 
@@ -84,17 +79,7 @@ export class PoolConfigService {
     return { minerAddress, coinbaseTag, configured: !!minerAddress };
   }
 
-  /**
-   * Persists the mining address (required) and an optional coinbase tag —
-   * e.g. "mined by umbrel-zec-pool", shown publicly in the block's coinbase
-   * — into the file zakura's `env_file:` entry reads at container start
-   * (see docker-compose.yml). This does NOT restart zakura itself — env
-   * vars are only read at process startup; PoolController is responsible
-   * for triggering that via DockerControlService, but only when this
-   * resolves with `changed: true` — no point bouncing the node (and losing
-   * its current getblocktemplate/peers) on a save that didn't actually
-   * alter either value, e.g. the user just re-submitting the same form.
-   */
+  /** Persists address + coinbase tag into zakura.env. Does NOT restart zakura (env vars only read at startup) — PoolController does that via DockerControlService, only when `changed: true`. */
   async setConfig(
     address: string,
     coinbaseTag: string | undefined,

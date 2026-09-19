@@ -28,16 +28,7 @@ export function isEquihashVerifyAvailable(): boolean {
   return binding !== null;
 }
 
-/**
- * Verifies an Equihash(200,9) solution against a block header.
- *
- * @param headerWithoutSolution The 140-byte header (version..nonce), NOT
- *   including the solution or its CompactSize length prefix.
- * @param solutionWithoutPrefix The raw solution bytes, with the CompactSize
- *   length prefix already stripped (see readCompactSize in block-header.ts)
- *   — the verifier expects the bare solution, not what miners actually
- *   submit over the wire.
- */
+/** Verifies an Equihash(200,9) solution. Expects the bare 140-byte header and a solution with its CompactSize prefix already stripped. */
 export function verifyEquihashSolution(
   headerWithoutSolution: Buffer,
   solutionWithoutPrefix: Buffer,

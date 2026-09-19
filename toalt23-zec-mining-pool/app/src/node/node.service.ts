@@ -98,20 +98,8 @@ export class NodeService {
     ]);
   }
 
-  /**
-   * Same call, but with `longpollid` set — per BIP-22 (which
-   * `getblocktemplate` implementations, including Zebra/Zakura, still
-   * follow for this), the node blocks server-side and only responds once
-   * the template identified by that id is stale (normally: a new block),
-   * instead of returning immediately. This is the closest thing to a push
-   * notification this node can offer: Zebra/Zakura has no ZMQ (a
-   * zcashd-only feature), so long-poll is the ceiling of what's achievable
-   * here — see PROGRESS.md for the research behind that.
-   *
-   * Needs a much longer timeout than the default 30s: the node can
-   * legitimately hold the connection open for the whole block interval
-   * (~75s target, sometimes well beyond).
-   */
+  /** Same call with `longpollid` — node blocks until the template goes stale (BIP-22), our substitute for push notifications since Zebra/Zakura has no ZMQ.
+   * Needs a long timeout: the node can hold the connection open a whole block interval. */
   async getBlockTemplateLongPoll(
     longpollId: string,
     timeoutMs = 90000,

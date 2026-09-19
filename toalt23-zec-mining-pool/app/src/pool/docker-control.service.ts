@@ -1,21 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as http from 'http';
 
-/**
- * Talks to the Docker Engine API over the mounted socket (/var/run/docker.sock)
- * to restart the zakura container after a mining-address change, so the new
- * address takes effect without restarting the whole app.
- *
- * Deliberately hand-rolled instead of pulling in a general Docker client
- * library: this is the ONE narrow call this service is allowed to make, and
- * keeping it that way limits how much a bug here could do. That said, once
- * the socket is mounted, anything else running in this container also has
- * full, unrestricted Docker API access — no amount of care in this file
- * changes that. A docker-socket-proxy (e.g. tecnativa/docker-socket-proxy)
- * sitting between the app and dockerd, allowlisting only this one endpoint,
- * would close that gap properly; not done here to keep this deployable
- * without an extra container.
- */
+/** Restarts the zakura container over the mounted Docker socket after a mining-address change.
+ * Hand-rolled to one narrow call on purpose — a docker-socket-proxy would allowlist this
+ * properly, but isn't worth the extra container at this scale (see PROGRESS.md). */
 @Injectable()
 export class DockerControlService {
   private readonly logger = new Logger(DockerControlService.name);
@@ -24,13 +12,7 @@ export class DockerControlService {
   private readonly zakuraContainerName =
     process.env.ZAKURA_CONTAINER_NAME ?? 'toalt23-zec-mining-pool_zakura_1';
 
-  /**
-   * Restarts the zakura container so it picks up a freshly written
-   * ZAKURA_MINING__MINER_ADDRESS. Returns true on success; false (never
-   * throws) if the socket isn't mounted, the container can't be found, or
-   * anything else goes wrong — callers should fall back to telling the user
-   * to restart manually rather than fail the address save itself.
-   */
+  /** Returns true on success; false (never throws) on any failure — callers should tell the user to restart manually rather than fail the save. */
   async restartZakuraContainer(): Promise<boolean> {
     try {
       await this.dockerApiRequest(

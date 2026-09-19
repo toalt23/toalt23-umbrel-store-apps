@@ -76,12 +76,12 @@ interface WorkerConnection {
   lastShareAt?: number;
   acceptedShares: number;
   rejectedShares: number;
-  /** Submissions for a job the pool no longer knows about (ERR_JOB_NOT_FOUND) — usually the miner racing a job change, not an invalid share. Tracked separately from rejectedShares. */
+  /** ERR_JOB_NOT_FOUND submissions — usually a job-change race, not an invalid share. Tracked separately from rejectedShares. */
   staleShares: number;
   recentShareDifficulties: ShareSample[];
   /** Highest difficulty this worker has achieved this session — resets on reconnect, unlike the pool-wide record below. */
   bestShareDifficulty: number;
-  /** Periodic hashrate snapshots for the dashboard's per-worker chart, oldest first. Lives on the connection itself so it's naturally gone the moment a worker disconnects — no separate cleanup needed. */
+  /** Per-worker hashrate chart data. Lives on the connection, so it's gone on disconnect with no separate cleanup. */
   hashrateHistory: HashrateSample[];
 }
 
@@ -112,7 +112,7 @@ export interface PoolStatus {
   bestShareDifficultyEver: number;
   bestShareDifficultyWorker?: string;
   bestShareDifficultyAt?: string;
-  /** "Pool Effort" for the current round as a percentage — 100 == the expected amount of work to find one block at the difficulty each share was actually submitted at. See effortAccumulator in pool-stats-store.ts for why this isn't just raw work / today's difficulty. */
+  /** "Pool Effort" as a percentage — 100 == expected work to find a block. See effortAccumulator in pool-stats-store.ts. */
   poolEffortPercent: number;
   lastTemplateFetchedAt?: string;
   lastTemplateError?: string;
@@ -120,28 +120,17 @@ export interface PoolStatus {
 }
 
 const SHARE_WINDOW_MS = 10 * 60 * 1000;
-// How often a hashrate snapshot is taken per worker for the dashboard chart,
-// and how long those snapshots are kept — 8h at 15s resolution is ~1920
-// points per connected worker, trivial to hold in memory.
+// Hashrate snapshot cadence/retention for the dashboard chart — 24h at 15s is ~5760 points, trivial in memory.
 const HASHRATE_HISTORY_SAMPLE_MS = 15 * 1000;
-const HASHRATE_HISTORY_RETENTION_MS = 8 * 60 * 60 * 1000;
+const HASHRATE_HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MAX_JOBS_RETAINED = 6;
-// A connection this long without submitting a share is pruned — covers both
-// a genuinely dead peer (TCP keepalive alone can take much longer than this
-// to notice on Linux: setKeepAlive() only sets the idle delay, not the probe
-// interval/count, which stay at OS defaults) and a still-open-but-idle
-// connection, e.g. a miner configured with multiple identical fallback pool
-// entries that all land here — only the one actually being mined on submits
-// shares, so the redundant standby connections age out here instead of
-// sitting in the dashboard as phantom extra workers.
+// A connection this long without a share is pruned — covers both a genuinely dead peer
+// (TCP keepalive alone is much slower on Linux) and redundant duplicate connections.
 const STALE_CONNECTION_MS = 150 * 1000;
 const MAX_LINE_LENGTH = 65536;
 const LONGPOLL_MIN_BACKOFF_MS = 1000;
 const LONGPOLL_MAX_BACKOFF_MS = 30000;
-// How long the long-poll loop waits before retrying when it has no
-// longpollid yet (node never reachable, or doesn't support it at all) —
-// deliberately short so a template becoming available is picked up quickly,
-// but not a busy-loop.
+// Retry delay when there's no longpollid yet — short enough to pick up a template quickly, but not a busy-loop.
 const LONGPOLL_RETRY_WITHOUT_ID_MS = 5000;
 
 // Error codes per ZIP-301 ("Zcash Stratum Protocol").
@@ -180,7 +169,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
   private bestShareDifficultyWorker?: string;
   private bestShareDifficultyAt?: Date;
   private effortAccumulator = 0;
-  /** Tracks the last-persisted value of effortAccumulator so the periodic tick can skip writing to disk when nothing changed since the previous tick. */
+  /** Last-persisted effortAccumulator, so the periodic tick can skip writing when nothing changed. */
   private lastPersistedEffortAccumulator = 0;
   private blockHistory: FoundBlockRecord[] = [];
   private lastTemplateFetchedAt?: Date;
@@ -219,10 +208,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Stratum server listening on port ${this.port}`),
     );
 
-    // No separate startup fetch or interval timer — runLongPollLoop() below
-    // bootstraps its own first template (retrying on its own if the node
-    // isn't reachable yet at container start) and is the sole source of
-    // template updates from here on.
+    // runLongPollLoop() bootstraps its own first template and is the sole source of updates from here on.
     void this.runLongPollLoop();
 
     this.hashrateHistoryTimer = setInterval(
@@ -239,7 +225,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     for (const conn of this.connections.values()) conn.socket.destroy();
   }
 
-  /** Wipes the persisted pool-wide best-share record (user-triggered, e.g. to start a fresh "personal record" after tuning presets). Does not touch blocksFound or any per-worker session stats. */
+  /** User-triggered reset of the best-share record only — leaves blocksFound and per-worker stats untouched. */
   async resetBestShare(): Promise<void> {
     this.bestShareDifficultyEver = 0;
     this.bestShareDifficultyWorker = undefined;
@@ -306,7 +292,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  /** Ticks every HASHRATE_HISTORY_SAMPLE_MS: prunes connections that have gone STALE_CONNECTION_MS without a share, snapshots each remaining connected worker's live hashrate into its own history buffer (trimming anything past the retention window), and — only if effortAccumulator actually moved since the last tick — piggybacks a persistStats() so it survives a restart without a disk write on every single share (or, on an idle pool between shares, every single tick forever). */
+  /** Periodic tick: prunes stale connections, snapshots each worker's hashrate, and persists stats only if effortAccumulator actually changed. */
   private sampleHashrateHistory() {
     const now = Date.now();
     const cutoff = now - HASHRATE_HISTORY_RETENTION_MS;
@@ -333,7 +319,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Chart data for one worker's dashboard accordion — empty once it disconnects, since the history lives only on its (now-gone) connection object. */
+  /** Empty once the worker disconnects — history lives only on its (now-gone) connection object. */
   getWorkerHashrateHistory(
     workerName: string,
     rangeMs: number,
@@ -350,16 +336,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
   // Template polling / job broadcast
   // ---------------------------------------------------------------------
 
-  /**
-   * Plain, non-blocking fetch — used only by runLongPollLoop() below to
-   * bootstrap the very first longpollid (there's nothing to long-poll on
-   * until we have one). Not used on any ongoing cadence: long-poll is the
-   * sole source of template updates once seeded. Retried by the loop's own
-   * "no id yet" branch, so a startup ordering issue (e.g. zakura not
-   * reachable yet when this container starts, which is routine — see the
-   * ECONNREFUSED warnings that normally precede the first job) resolves on
-   * its own instead of leaving the pool permanently without a job.
-   */
+  /** Bootstraps the very first longpollid for runLongPollLoop() — not used on any ongoing cadence, and retried automatically if the node isn't reachable yet at startup. */
   private async seedTemplate() {
     let template: BlockTemplateResult;
     try {
@@ -373,21 +350,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     await this.applyTemplate(template, 'poll');
   }
 
-  /**
-   * Recursive BIP-22 long-poll loop — the sole source of template updates.
-   * The closest thing to ZMQ-style block push this node can offer:
-   * Zebra/Zakura has no ZMQ (a zcashd-only feature), so this is the ceiling
-   * of what's achievable here; see PROGRESS.md for the research behind
-   * that conclusion, and for the live confirmation (2026-08-29) that
-   * Zakura's longpollid reliably unblocks on both a new tip *and*
-   * mempool-only changes — the latter was the reason an extra plain-poll
-   * timer existed for a while; removed once that was confirmed redundant.
-   * Each round blocks server-side in getblocktemplate on the last-seen
-   * longpollid until the node considers it stale, applies whatever comes
-   * back, then immediately re-issues with the fresh id. Runs for the
-   * lifetime of the service — stopped only via `this.stopped` in
-   * onModuleDestroy.
-   */
+  /** Recursive BIP-22 long-poll loop — sole source of template updates, our substitute for ZMQ push. Runs for the service's lifetime, stopped via `this.stopped`. See PROGRESS.md. */
   private async runLongPollLoop() {
     while (!this.stopped) {
       let longpollId = this.lastLongpollId;
@@ -395,8 +358,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
         await this.seedTemplate();
         longpollId = this.lastLongpollId;
         if (!longpollId) {
-          // Still nothing — node not reachable yet, or this version
-          // doesn't return a longpollid at all. Retry rather than spin.
+          // Node unreachable, or no longpollid support — retry rather than spin.
           await this.sleep(LONGPOLL_RETRY_WITHOUT_ID_MS);
           continue;
         }
@@ -417,10 +379,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
         this.longPollBackoffMs = this.longPollBackoffMs
           ? Math.min(this.longPollBackoffMs * 2, LONGPOLL_MAX_BACKOFF_MS)
           : LONGPOLL_MIN_BACKOFF_MS;
-        // Debug, not warn: this fires routinely on the expected
-        // ECONNREFUSED burst when zakura auto-restarts after a
-        // mining-address change (see PROGRESS.md gotcha #3), not just on
-        // genuine faults.
+        // Debug not warn: fires routinely on the expected ECONNREFUSED burst after a zakura restart (see PROGRESS.md).
         this.logger.debug(
           `Long-poll getblocktemplate failed, backing off ${this.longPollBackoffMs}ms: ` +
             this.lastTemplateError,
@@ -436,19 +395,8 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  /**
-   * Turns a fetched template (from seedTemplate() or the long-poll loop)
-   * into a job and broadcasts it if anything actually changed. Only ever
-   * called sequentially from within runLongPollLoop()'s single while loop
-   * (seedTemplate() itself is only invoked from there too), so no overlap
-   * guard is needed — there is exactly one template fetch in flight at any
-   * time.
-   *
-   * `source` is only used for logging — it's what lets us tell from the
-   * logs alone whether a job came from the initial/reconnect bootstrap
-   * ('poll') or from long-poll actually doing its job ('longpoll'), and
-   * whether that was for a new block or a mempool-only refresh.
-   */
+  /** Turns a fetched template into a job and broadcasts it if changed. Only called sequentially from runLongPollLoop(), so no overlap guard needed.
+   * `source` is logging-only — distinguishes bootstrap/'poll' from actual longpoll activity. */
   private async applyTemplate(
     template: BlockTemplateResult,
     source: 'longpoll' | 'poll',
@@ -458,30 +406,17 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     this.lastTemplateFetchedAt = new Date();
 
     const prevJob = this.currentJob;
-    // Broadcast on every template change, including mempool-only refreshes
-    // (not just a new previousblockhash) — reverted 2026-09-10 back to this
-    // pre-1.7.2 behavior. 1.7.2 (2026-09-08) throttled this to new-tip-only
-    // to stop forcing an Equihash restart on every mempool refresh, which
-    // measurably helped Sols/s — but live logs on 2026-09-10 showed the Z9
-    // mini's own firmware disconnecting/reconnecting when it went too long
-    // (~90-135s) without a fresh mining.notify, i.e. a no-new-work
-    // watchdog. A 60s job-heartbeat was tried as a middle ground but never
-    // confirmed not to itself force a restart, and the user decided the
-    // simpler, previously-proven-stable behavior (frequent notifies) is
-    // preferable to an unverified partial fix. See PROGRESS.md for the
-    // full history if this needs revisiting.
+    // Broadcast on every change including mempool-only refreshes — 1.7.2's throttling
+    // to new-tip-only caused the Z9 mini's firmware to disconnect from job starvation.
+    // Reverted 2026-09-10; see PROGRESS.md for the full history.
     const changed =
       !prevJob ||
       prevJob.template.previousblockhash !== template.previousblockhash ||
       prevJob.template.defaultroots?.merkleroot !==
         template.defaultroots?.merkleroot;
     if (!changed) {
-      // Only notable for 'longpoll': it resolved but nothing actually
-      // changed, which — if it happens right away rather than after a
-      // long block-sized wait — is a sign the node isn't really blocking
-      // on longpollid (see PROGRESS.md's open validation item). Expected
-      // and unremarkable for 'poll', which always fetches a live
-      // snapshot regardless of whether it changed.
+      // Only notable for 'longpoll' — resolving without a real change right away
+      // suggests the node isn't truly blocking on longpollid (see PROGRESS.md).
       if (source === 'longpoll') {
         this.logger.debug(
           'Long-poll resolved with no actual template change (unexpected unless it was a long wait).',
@@ -585,12 +520,8 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     );
 
     socket.setEncoding('utf8');
-    // Explicit interval (not just setKeepAlive(true), which leaves it at the
-    // OS default — ~2h on Linux): keeps NAT/firewall idle-connection state
-    // alive between real job broadcasts now that 1.7.2 stopped pushing a
-    // mining.notify on every mempool-only refresh, and also means a dead
-    // peer (power loss, cable pull) is detected in ~30s instead of staying
-    // listed in the dashboard for hours.
+    // Keeps NAT/firewall idle-connection state alive between job broadcasts. Does NOT
+    // reliably detect a dead peer in 30s (see STALE_CONNECTION_MS sweep for that — 1.8.5).
     socket.setKeepAlive(true, 30000);
     socket.on('data', (chunk: string) => this.handleData(conn, chunk));
     socket.on('close', () => {
@@ -681,15 +612,8 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     conn.presetKey = preset.key;
     conn.shareDifficulty = preset.shareDifficulty;
 
-    // REVERTED (1.8.7, 2026-09-17) — immediately destroying an older same-
-    // (IP, workerName) connection here caused a live reconnect storm on the
-    // real Z9 mini: its firmware treats the RST from destroy() as its own
-    // connection dying and reconnects instantly, which then immediately
-    // supersedes *this* connection, forever, hundreds of times a second,
-    // until the miner was power-cycled. See PROGRESS.md for the full
-    // writeup. Back to relying solely on STALE_CONNECTION_MS's periodic
-    // sweep (sampleHashrateHistory()) — up to 150s of a duplicate showing
-    // in the dashboard is a far smaller problem than a mining outage.
+    // REVERTED (1.8.7) — immediately destroying a duplicate connection here caused a real
+    // reconnect-storm outage on the Z9 mini. Rely solely on the STALE_CONNECTION_MS sweep instead. See PROGRESS.md.
 
     this.sendResult(conn, id, true);
     this.logger.log(
@@ -702,30 +626,14 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Selects a difficulty preset via the stratum password field
-   * (`mining.authorize("<worker>", "<password>")`), e.g. password "high" →
-   * difficulty 256. The worker name itself is left untouched — no more
-   * ".<preset>" suffix parsing, so it's shown back exactly as the miner
-   * configured it. "mid" is accepted as an alias for "medium". Anything
-   * else (blank, typo, unset) falls back to the pool default preset.
-   */
+  /** Preset selected via the stratum password (e.g. "high" → difficulty 256), "mid" aliases "medium". Anything else falls back to the pool default. */
   private parsePasswordPreset(rawPassword: string): string {
     const normalized = rawPassword.trim().toLowerCase();
     if (normalized === 'mid') return 'medium';
     return presetByKey(normalized) ? normalized : DEFAULT_PRESET_KEY;
   }
 
-  /**
-   * Every handleSubmit() reject path routes through here so all of them are
-   * equally visible in the log (previously most reject reasons only showed
-   * up indirectly as a bumped rejectedShares/staleShares counter in the
-   * dashboard — see PROGRESS.md, added 2026-09-08 while chasing the job-churn
-   * change). `debug` for routine/expected rejects that need no attention
-   * (a share racing a job change, an ASIC occasionally submitting below its
-   * assigned target), `warn` for anything shaped like a protocol violation
-   * or bug, worth noticing if it happens a lot.
-   */
+  /** Every handleSubmit() reject routes through here for consistent logging. `debug` for routine/expected rejects, `warn` for anything protocol-violation-shaped. */
   private logReject(
     level: 'debug' | 'warn',
     conn: WorkerConnection,
@@ -890,21 +798,14 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     conn.acceptedShares++;
     conn.lastShareAt = Date.now();
     const achievedDifficulty = difficultyFromHash(job.diff1Target, hash);
-    // Hashrate estimation needs the *assigned* share difficulty here, not the
-    // achieved one: achieved difficulty is exponentially distributed around
-    // the assigned target, so a single lucky share (e.g. 50x target) would
-    // otherwise dominate the windowed sum and wildly skew estimateHashrate().
-    // Luck tracking (bestShareDifficulty / bestShareDifficultyEver below)
-    // correctly uses achievedDifficulty — only the hashrate window doesn't.
+    // Uses assigned shareDifficulty, not achievedDifficulty — the latter is exponentially
+    // distributed and a lucky share would skew estimateHashrate(). Luck tracking below correctly uses achievedDifficulty.
     conn.recentShareDifficulties.push({
       at: Date.now(),
       difficulty: conn.shareDifficulty,
     });
     this.pruneOldShares(conn);
-    // Pool Effort: normalize this share's contribution against the network difficulty
-    // *right now* (not achievedDifficulty — same "assigned, not achieved" reasoning as
-    // the hashrate estimator above) so a later difficulty retarget can't retroactively
-    // change what work already submitted this round was worth.
+    // Pool Effort: normalize against difficulty *now* so a later retarget can't retroactively change this share's worth.
     if (this.lastKnownDifficulty) {
       this.effortAccumulator += conn.shareDifficulty / this.lastKnownDifficulty;
     }

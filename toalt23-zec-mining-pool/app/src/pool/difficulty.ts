@@ -4,13 +4,8 @@ export interface DifficultyPreset {
   shareDifficulty: number;
 }
 
-// Selected via the stratum **password** field on mining.authorize (ZIP-301's
-// `mining.authorize("<worker>", "<password>")`), not a worker-name suffix —
-// so the worker name a miner reports is shown back exactly as-is, no
-// ".<preset>" mangling (see StratumService#parsePasswordPreset). Fixed
-// difficulty values rather than hashrate-derived ones: simpler for the user
-// to reason about ("set password to high") than picking the ASIC model
-// that happens to match a target share interval.
+// Selected via the stratum password field (mining.authorize), not a worker-name suffix.
+// Fixed difficulty values, not hashrate-derived — simpler to reason about ("password: high").
 export const DIFFICULTY_PRESETS: DifficultyPreset[] = [
   { key: 'low', label: 'Low (difficulty 24)', shareDifficulty: 24 },
   { key: 'medium', label: 'Medium (difficulty 128)', shareDifficulty: 128 },
@@ -42,24 +37,11 @@ export function resolvePreset(key: string): DifficultyPreset {
   return found;
 }
 
-// Bitcoin pools estimate hashrate as difficulty * 2^32 / time because
-// Bitcoin's own "difficulty 1" target sits at ~2^224, and 2^256 / 2^224 =
-// 2^32. That constant is NOT chain-agnostic — it only holds because of
-// where Bitcoin's powLimit happens to sit. Zcash's powLimit (and therefore
-// diff1Target, derived live below) is far higher/easier, around 2^243, so
-// reusing a hardcoded 2^32 here previously overstated every hashrate
-// estimate by roughly 2^(243-224) = 2^19 (~524,288x) — confirmed against a
-// real Antminer Z9 mini, which reported GSol/s instead of its real ~12-14
-// kSol/s. Deriving the multiplier from the actual diff1Target instead
-// keeps this correct regardless of which chain/powLimit is running.
+// Bitcoin's hardcoded 2^32 multiplier assumes its own powLimit — wrong for Zcash, previously
+// overstated hashrate ~524,288x (confirmed: a real Z9 mini reported GSol/s, not kSol/s).
 const TWO_POW_256 = 2 ** 256;
 
-/**
- * diff1Target is the target corresponding to "difficulty 1" (i.e. the
- * network's powLimit). We derive it live from the node instead of hardcoding
- * a per-network constant: difficulty = diff1Target / currentTarget, so
- * diff1Target = currentTarget * currentDifficulty.
- */
+/** diff1Target = currentTarget * currentDifficulty — derived live instead of hardcoding a per-network powLimit constant. */
 export function diff1TargetFrom(
   currentTarget: bigint,
   currentDifficulty: number,
@@ -78,14 +60,7 @@ export function shareDifficultyToTarget(
   return (diff1Target * PRECISION) / scaled;
 }
 
-/**
- * Never require a share to be harder than an actual block would be — if a
- * worker's preset implies a stricter target than the current network target
- * (only realistically possible at very low network difficulty), fall back to
- * the network target so every share the worker finds is potentially a block.
- * In target terms "harder" means numerically smaller, so this takes the
- * larger (easier) of the two.
- */
+/** Never require a share harder than an actual block (only possible at very low network difficulty) — take the larger/easier of the two targets. */
 export function clampShareTarget(
   desired: bigint,
   networkTarget: bigint,

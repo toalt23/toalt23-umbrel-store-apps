@@ -1,27 +1,8 @@
 import { createHash } from 'crypto';
 import { BlockTemplateResult } from './types';
 
-/**
- * Byte-order note (the classic Stratum/GBT gotcha):
- *
- * The node's RPC returns hashes (previousblockhash, merkleroot, the reserved
- * field) and `bits` as "display" hex — big-endian, the same convention used
- * by block explorers — per BIP22's definition of the `bits` field ("bignum
- * in hex, big endian"), which Zcash's getblocktemplate inherited. The actual
- * block header stores these as raw little-endian bytes. So every one of
- * those fields needs a byte reversal when moving from RPC response to header
- * bytes. `version`, `curtime` and the header-encoded stratum fields we send
- * to miners do NOT get this treatment — ZIP-301 defines mining.notify's
- * fields as already being "block header encoding", i.e. exactly the raw
- * bytes a miner drops straight into the header with no further conversion.
- * We do the RPC->header conversion once per template and hand miners the
- * already-correct raw bytes.
- *
- * This is the one part of the pool we can't fully test without a live node
- * (or at least a real block to reconstruct — see scripts/verify-header-serialization.ts,
- * which round-trips this logic against an already-mined block to confirm the
- * hashing/target math independently of live template byte-order).
- */
+// Byte-order gotcha: reverse RPC's big-endian hashes/bits to little-endian for the header,
+// but NOT version/curtime/stratum fields (already header-encoded). See scripts/verify-header-serialization.ts.
 
 export function reverseBuffer(buf: Buffer): Buffer {
   return Buffer.from(buf).reverse();
@@ -53,11 +34,7 @@ export function doubleSha256(data: Buffer): Buffer {
     .digest();
 }
 
-/**
- * Interprets a raw (non-reversed) header hash as the big-endian integer used
- * for target comparisons — reverse-then-parse, the standard Bitcoin/Zcash
- * convention also used by z-nomp/miningcore.
- */
+/** Reverse-then-parse a raw header hash as the big-endian integer used for target comparisons (standard Bitcoin/Zcash convention). */
 export function headerHashToBigInt(rawHash: Buffer): bigint {
   return BigInt('0x' + reverseBuffer(rawHash).toString('hex'));
 }
@@ -73,12 +50,7 @@ export function bigIntToTargetHex(value: bigint): string {
   return hex.padStart(64, '0');
 }
 
-/**
- * Reads a Bitcoin-style CompactSize (varint) prefix. Used to strip the
- * length prefix miners include in front of the Equihash solution before
- * handing the raw solution bytes to equihashverify (which expects the
- * solution WITHOUT that prefix).
- */
+/** Strips the CompactSize length prefix miners put in front of the Equihash solution — equihashverify expects it bare. */
 export function readCompactSize(
   buf: Buffer,
   offset: number,
@@ -137,11 +109,7 @@ export function extractHeaderFields(
   };
 }
 
-/**
- * Assembles the 140-byte header (everything up to but excluding the
- * Equihash solution) — the PoW input, and the `header` argument
- * equihashverify expects.
- */
+/** Assembles the 140-byte pre-solution header — the PoW input, and what equihashverify expects as `header`. */
 export function assembleHeaderWithoutSolution(
   fields: HeaderFields,
   timeBytes: Buffer,
