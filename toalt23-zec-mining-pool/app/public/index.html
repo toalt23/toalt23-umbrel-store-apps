@@ -124,37 +124,35 @@
     .placeholder.hidden { display: none; }
     #minerContent.hidden { display: none; }
 
-    .worker-row { background: var(--card-alt); padding: 12px 14px; border-radius: 10px; }
-    .worker-row .worker-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .worker-row .worker-name { font-size: 1.15rem; font-weight: 700; color: #ffffff; text-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
-    .worker-row .worker-hashrate { font-size: 1.55rem; font-weight: 700; color: #ffffff; text-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
-    .worker-row .worker-bottom { margin-top: 4px; }
+    .worker-row { background: var(--card-alt); padding: 9px 12px; border-radius: 10px; }
+    .worker-row .worker-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .worker-row .worker-name,
+    .worker-row .worker-hashrate { font-size: 1.15rem; font-weight: 700; color: #ffffff; text-shadow: 0 0 8px rgba(255, 255, 255, 0.3); }
+    .worker-row .worker-bottom { margin-top: 3px; }
     .worker-row .worker-shares { font-size: 0.82rem; color: var(--text-secondary); }
     .worker-row .worker-shares-ok { color: var(--green); }
     .worker-row .worker-shares-bad { color: var(--red); }
 
     .worker-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .worker-info-item { background: rgba(255, 255, 255, 0.03); border-radius: 8px; padding: 8px 10px; }
-    .worker-info-item.wide { grid-column: 1 / -1; }
     .worker-info-item .label { font-size: 0.68rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
-    .worker-info-item .value { font-size: 0.92rem; font-weight: 600; color: var(--gold-2); margin-top: 2px; }
-    .worker-info-item.plain .value { color: var(--text); }
-    .worker-info-item .value.address { word-break: break-all; font-weight: 500; }
+    .worker-info-item .value { font-size: 0.92rem; font-weight: 600; color: var(--text); margin-top: 2px; }
 
     .worker-chart-toggle {
       display: flex;
       justify-content: flex-start;
       align-items: center;
       gap: 6px;
-      margin-top: 7px;
-      padding-top: 4px;
+      line-height: 1;
+      margin-top: 3px;
+      padding-top: 1px;
       border-top: 1px solid rgba(255, 255, 255, 0.06);
       font-size: 0.76rem;
       color: var(--text-secondary);
       cursor: pointer;
       user-select: none;
     }
-    .worker-chart-toggle .chevron { font-size: 1.6rem; color: var(--gold-2); position: relative; top: -2px; }
+    .worker-chart-toggle .chevron { font-size: 1.3rem; color: var(--gold-2); position: relative; top: -1px; }
     .worker-chart { margin-top: 16px; }
     .worker-chart.hidden { display: none; }
     .chart-range-row { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -360,7 +358,7 @@
           </div>
           <div class="stat"><div class="stat-label">Blocks Found</div><div class="stat-value" id="blocksFound">–</div></div>
         </div>
-        <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
+        <div id="workerList" style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;"></div>
       </div>
       <div class="footer-row">
         <span id="poolLastUpdate">–</span>
@@ -674,8 +672,6 @@
     // poll) so the accordion doesn't snap shut. Not persisted — nothing to remember once a worker disconnects.
     const workerChartState = {};
     const HASHRATE_CHART_RANGES = ['1h', '8h', '24h'];
-    // Set once by loadPoolConfig() at boot, kept in sync by the address-save handler — read by each worker's "Show More" info section.
-    let currentPayoutAddress = null;
 
     function getWorkerChartState(workerName) {
       if (!workerChartState[workerName]) {
@@ -963,10 +959,10 @@
               '</div>' +
               '<div class="worker-chart' + (chartState.expanded ? '' : ' hidden') + '">' +
                 '<div class="worker-info-grid">' +
-                  '<div class="worker-info-item plain"><div class="label">Best Share</div><div class="value">' + formatDifficulty(w.bestShareDifficulty) + '</div></div>' +
+                  '<div class="worker-info-item"><div class="label">Best Share</div><div class="value">' + formatDifficulty(w.bestShareDifficulty) + '</div></div>' +
                   '<div class="worker-info-item"><div class="label">Uptime</div><div class="value">' + formatUptime(w.connectedAt) + '</div></div>' +
-                  '<div class="worker-info-item wide plain"><div class="label">Miner Wallet</div><div class="value address">' + (currentPayoutAddress || '–') + '</div></div>' +
                   '<div class="worker-info-item"><div class="label">Share Difficulty</div><div class="value">' + w.shareDifficulty + '</div></div>' +
+                  '<div class="worker-info-item"><div class="label">Last Share</div><div class="value">' + (w.lastShareAt ? formatRelativeTime(w.lastShareAt) : '–') + '</div></div>' +
                 '</div>' +
                 '<div class="chart-range-row">' +
                   HASHRATE_CHART_RANGES.map((r) =>
@@ -1017,7 +1013,6 @@
       try {
         const res = await fetch('/api/pool/config');
         const data = await res.json();
-        currentPayoutAddress = data.minerAddress || null;
         const addressInput = document.getElementById('minerAddressInput');
         if (data.minerAddress && document.activeElement !== addressInput) {
           addressInput.value = data.minerAddress;
@@ -1075,7 +1070,6 @@
         if (!res.ok) {
           setMinerAddressMsg(data.message || 'Could not save address.', 'error');
         } else {
-          currentPayoutAddress = address;
           if (!data.changed) {
             setMinerAddressMsg('No changes', 'success');
           } else if (data.zakuraRestarted) {
