@@ -35,7 +35,11 @@ import {
   isEquihashVerifyAvailable,
   verifyEquihashSolution,
 } from './equihash-verify';
-import { loadPoolStats, savePoolStats } from './pool-stats-store';
+import {
+  FoundBlockRecord,
+  loadPoolStats,
+  savePoolStats,
+} from './pool-stats-store';
 
 interface Job {
   id: string;
@@ -108,8 +112,8 @@ export interface PoolStatus {
   bestShareDifficultyEver: number;
   bestShareDifficultyWorker?: string;
   bestShareDifficultyAt?: string;
-  /** Network difficulty at the moment bestShareDifficultyEver was found. */
-  bestShareNetworkDifficulty?: number;
+  /** "Pool Effort" for the current round as a percentage — 100 == the expected amount of work to find one block at the difficulty each share was actually submitted at. See effortAccumulator in pool-stats-store.ts for why this isn't just raw work / today's difficulty. */
+  poolEffortPercent: number;
   lastTemplateFetchedAt?: string;
   lastTemplateError?: string;
   connectedWorkers: PoolWorkerStatus[];
@@ -175,7 +179,10 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
   private bestShareDifficultyEver = 0;
   private bestShareDifficultyWorker?: string;
   private bestShareDifficultyAt?: Date;
-  private bestShareNetworkDifficulty?: number;
+  private effortAccumulator = 0;
+  /** Tracks the last-persisted value of effortAccumulator so the periodic tick can skip writing to disk when nothing changed since the previous tick. */
+  private lastPersistedEffortAccumulator = 0;
+  private blockHistory: FoundBlockRecord[] = [];
   private lastTemplateFetchedAt?: Date;
   private lastTemplateError?: string;
 
@@ -200,7 +207,9 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     this.bestShareDifficultyAt = persisted.bestShareDifficultyAt
       ? new Date(persisted.bestShareDifficultyAt)
       : undefined;
-    this.bestShareNetworkDifficulty = persisted.bestShareNetworkDifficulty;
+    this.effortAccumulator = persisted.effortAccumulator;
+    this.lastPersistedEffortAccumulator = persisted.effortAccumulator;
+    this.blockHistory = persisted.blockHistory;
 
     this.server = net.createServer((socket) => this.handleConnection(socket));
     this.server.on('error', (err) =>
@@ -235,7 +244,6 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     this.bestShareDifficultyEver = 0;
     this.bestShareDifficultyWorker = undefined;
     this.bestShareDifficultyAt = undefined;
-    this.bestShareNetworkDifficulty = undefined;
     await this.persistStats();
   }
 
@@ -253,7 +261,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       bestShareDifficultyEver: this.bestShareDifficultyEver,
       bestShareDifficultyWorker: this.bestShareDifficultyWorker,
       bestShareDifficultyAt: this.bestShareDifficultyAt?.toISOString(),
-      bestShareNetworkDifficulty: this.bestShareNetworkDifficulty,
+      poolEffortPercent: this.effortAccumulator * 100,
       lastTemplateFetchedAt: this.lastTemplateFetchedAt?.toISOString(),
       lastTemplateError: this.lastTemplateError,
       connectedWorkers: [...this.connections.values()]
@@ -298,10 +306,14 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  /** Ticks every HASHRATE_HISTORY_SAMPLE_MS: prunes connections that have gone STALE_CONNECTION_MS without a share, and snapshots each remaining connected worker's live hashrate into its own history buffer, trimming anything past the retention window. */
+  /** Ticks every HASHRATE_HISTORY_SAMPLE_MS: prunes connections that have gone STALE_CONNECTION_MS without a share, snapshots each remaining connected worker's live hashrate into its own history buffer (trimming anything past the retention window), and — only if effortAccumulator actually moved since the last tick — piggybacks a persistStats() so it survives a restart without a disk write on every single share (or, on an idle pool between shares, every single tick forever). */
   private sampleHashrateHistory() {
     const now = Date.now();
     const cutoff = now - HASHRATE_HISTORY_RETENTION_MS;
+    if (this.effortAccumulator !== this.lastPersistedEffortAccumulator) {
+      this.lastPersistedEffortAccumulator = this.effortAccumulator;
+      void this.persistStats();
+    }
     for (const c of this.connections.values()) {
       if (now - (c.lastShareAt ?? c.connectedAt) > STALE_CONNECTION_MS) {
         this.logger.log(
@@ -889,6 +901,13 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       difficulty: conn.shareDifficulty,
     });
     this.pruneOldShares(conn);
+    // Pool Effort: normalize this share's contribution against the network difficulty
+    // *right now* (not achievedDifficulty — same "assigned, not achieved" reasoning as
+    // the hashrate estimator above) so a later difficulty retarget can't retroactively
+    // change what work already submitted this round was worth.
+    if (this.lastKnownDifficulty) {
+      this.effortAccumulator += conn.shareDifficulty / this.lastKnownDifficulty;
+    }
     if (achievedDifficulty > conn.bestShareDifficulty) {
       conn.bestShareDifficulty = achievedDifficulty;
     }
@@ -896,7 +915,6 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       this.bestShareDifficultyEver = achievedDifficulty;
       this.bestShareDifficultyWorker = conn.workerName;
       this.bestShareDifficultyAt = new Date();
-      this.bestShareNetworkDifficulty = this.lastKnownDifficulty;
       this.logger.log(
         `🍀 New best share difficulty: ${achievedDifficulty.toExponential(3)} by ${conn.workerName}`,
       );
@@ -908,7 +926,7 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `🎉 Possible block found by ${conn.workerName} at height ${job.template.height}!`,
       );
-      void this.submitFoundBlock(job, fullHeader);
+      void this.submitFoundBlock(job, fullHeader, conn, achievedDifficulty);
     }
   }
 
@@ -927,11 +945,17 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
       bestShareDifficultyEver: this.bestShareDifficultyEver,
       bestShareDifficultyWorker: this.bestShareDifficultyWorker,
       bestShareDifficultyAt: this.bestShareDifficultyAt?.toISOString(),
-      bestShareNetworkDifficulty: this.bestShareNetworkDifficulty,
+      effortAccumulator: this.effortAccumulator,
+      blockHistory: this.blockHistory,
     });
   }
 
-  private async submitFoundBlock(job: Job, fullHeader: Buffer) {
+  private async submitFoundBlock(
+    job: Job,
+    fullHeader: Buffer,
+    conn: WorkerConnection,
+    achievedDifficulty: number,
+  ) {
     const coinbaseHex = job.template.coinbasetxn.data;
     const otherTxHex = job.template.transactions.map((t) => t.data);
     const blockHex = assembleBlockHex(fullHeader, coinbaseHex, otherTxHex);
@@ -945,6 +969,13 @@ export class StratumService implements OnModuleInit, OnModuleDestroy {
         this.blocksFound++;
         this.lastBlockFoundAt = new Date();
         this.lastBlockFoundHeight = job.template.height;
+        this.effortAccumulator = 0;
+        this.blockHistory.push({
+          height: job.template.height,
+          at: this.lastBlockFoundAt.toISOString(),
+          worker: conn.workerName,
+          achievedDifficulty,
+        });
         this.logger.log(
           `✅ Block ${job.template.height} accepted by the node!`,
         );

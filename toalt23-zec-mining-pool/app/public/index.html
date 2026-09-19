@@ -32,7 +32,7 @@
       justify-content: center;
       padding: 32px 16px;
     }
-    .app { max-width: 560px; width: 100%; }
+    .app { max-width: 750px; width: 100%; }
 
     header {
       display: flex;
@@ -90,6 +90,25 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
+    }
+    /* Pool tab only — Node/Configuration tabs keep the narrower 2-column grid, they don't have enough tiles to benefit from 3.
+       minmax(0, 1fr), not bare 1fr: grid tracks default to min-width:auto, which refuses to
+       shrink a column below its content's intrinsic width and overflows the viewport on
+       narrow phones instead of wrapping — confirmed via real headless-Chromium screenshots
+       at 360px before this fix (horizontal overflow) and after (correctly wraps in place). */
+    #minerContent .stats {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    /* Phone-only: the 3-column Pool grid has plenty of room on tablet/desktop widths (up
+       to 750px container), but on real phones the longer values ("149.00 kSol/s", "12.22
+       K / 228.22 M") wrap mid-word across 3-4 lines at the default size — confirmed via
+       headless-Chromium screenshots at 360/390/428px. Shrinking just this grid's value
+       font on narrow screens keeps more of them on one line without touching the rest of
+       the UI or the desktop layout. */
+    @media (max-width: 480px) {
+      #minerContent .stats .stat-value {
+        font-size: 1rem;
+      }
     }
     .stat { background: var(--card-alt); padding: 12px; border-radius: 10px; min-height: 90px; }
     .stat.hidden { display: none; }
@@ -336,8 +355,13 @@
           <div class="stat"><div class="stat-label">Difficulty</div><div class="stat-value" id="minerDifficulty">–</div></div>
           <div class="stat"><div class="stat-label">Pool Hashrate</div><div class="stat-value" id="poolHashrate">–</div></div>
           <div class="stat"><div class="stat-label">Workers</div><div class="stat-value" id="workerCount">–</div></div>
-          <div class="stat"><div class="stat-label">Pool's Best Share</div><div class="stat-value" id="bestShareValue">–</div></div>
+          <div class="stat">
+            <div class="stat-label">Best Share</div>
+            <div class="stat-value" id="bestShareValue">–</div>
+            <div class="stat-sub" id="bestShareAgo"></div>
+          </div>
           <div class="stat"><div class="stat-label">Blocks Found</div><div class="stat-value" id="blocksFound">–</div></div>
+          <div class="stat"><div class="stat-label">Pool Effort</div><div class="stat-value" id="poolEffort">–</div></div>
         </div>
         <div id="workerList" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;"></div>
       </div>
@@ -398,9 +422,9 @@
         <div class="config-row">
           <input type="text" id="minerAddressInput" placeholder="t1… / t3… / zs1… / u1…" autocomplete="off" spellcheck="false">
         </div>
-        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (max 86 characters)</label>
+        <label for="coinbaseTagInput" style="margin-top: 12px;">Coinbase tag (max 86 bytes — multi-byte characters like emoji or accents count for more than 1)</label>
         <div class="config-row">
-          <input type="text" id="coinbaseTagInput" placeholder="mined by …" autocomplete="off" spellcheck="false" maxlength="86">
+          <input type="text" id="coinbaseTagInput" placeholder="mined by …" autocomplete="off" spellcheck="false" maxlength="200">
         </div>
         <div class="config-row" style="margin-top: 12px;">
           <button id="minerAddressSave">Save</button>
@@ -492,13 +516,6 @@
       if (el) el.textContent = Array(bootDotCount).fill('.').join(' ');
     }, 500);
 
-    function formatSolps(v) {
-      if (v == null) return null;
-      const units = ['Sol/s', 'kSol/s', 'MSol/s', 'GSol/s'];
-      let i = 0;
-      while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
-      return v.toFixed(2) + ' ' + units[i];
-    }
 
     function formatShortNumber(v) {
       if (v == null) return null;
@@ -586,9 +603,9 @@
           document.getElementById('minerDifficulty').textContent =
             data.difficulty != null ? formatShortNumber(Number(data.difficulty)) : '–';
           document.getElementById('minerNetworkHashrate').textContent =
-            formatSolps(data.networkSolps) ?? '–';
+            formatSol(data.networkSolps) ?? '–';
 
-          setStat('hashrate', 'hashrateStat', formatSolps(data.networkSolps));
+          setStat('hashrate', 'hashrateStat', formatSol(data.networkSolps));
           setStat('peers', 'peersStat', data.peers != null ? String(data.peers) : null);
           setStat('price', 'priceStat', formatUsd(data.zecUsdPrice));
           setStat(
@@ -631,6 +648,7 @@
     }
 
     function formatSol(v) {
+      if (v == null) return null;
       const units = ['Sol/s', 'kSol/s', 'MSol/s', 'GSol/s'];
       let i = 0;
       while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
@@ -643,6 +661,18 @@
     function formatDifficulty(d) {
       if (!d) return '0';
       return formatShortNumber(d);
+    }
+
+    // Always whole units, single coarsest-fit tier (minutes / hours / days) —
+    // no decimals, no mixed "1d 4h" style.
+    function formatRelativeTime(iso) {
+      const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+      if (diffMin < 1) return 'just now';
+      if (diffMin < 60) return diffMin + 'm ago';
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return diffHours + 'h ago';
+      const diffDays = Math.floor(diffHours / 24);
+      return diffDays + (diffDays === 1 ? ' day ago' : ' days ago');
     }
 
     // Per-worker chart UI state (expanded/collapsed + selected range), kept
@@ -897,6 +927,8 @@
         }
 
         document.getElementById('blocksFound').textContent = String(data.blocksFound);
+        document.getElementById('poolEffort').textContent =
+          data.poolEffortPercent.toFixed(2) + '%';
         document.getElementById('workerCount').textContent = String(data.connectedWorkers.length);
         const verifyEl = document.getElementById('verifyStatus');
         verifyEl.textContent = data.equihashVerifyAvailable ? 'Active' : 'Unavailable';
@@ -970,13 +1002,13 @@
         }
 
         if (data.bestShareDifficultyEver > 0) {
-          const atDifficulty = data.bestShareNetworkDifficulty != null
-            ? formatDifficulty(data.bestShareNetworkDifficulty)
-            : null;
           document.getElementById('bestShareValue').textContent =
-            formatDifficulty(data.bestShareDifficultyEver) + (atDifficulty ? ' / ' + atDifficulty : '');
+            formatDifficulty(data.bestShareDifficultyEver);
+          document.getElementById('bestShareAgo').textContent =
+            data.bestShareDifficultyAt ? formatRelativeTime(data.bestShareDifficultyAt) : '';
         } else {
           document.getElementById('bestShareValue').textContent = '–';
+          document.getElementById('bestShareAgo').textContent = '';
         }
 
         document.getElementById('poolLastUpdate').textContent =
@@ -1027,6 +1059,13 @@
 
       if (!address) {
         setMinerAddressMsg('Enter an address first.', 'error');
+        return;
+      }
+      // Mirrors the backend's exact rule (Buffer.byteLength(tag, 'utf8') <= 86 in
+      // pool-config.service.ts) so multi-byte characters (emoji, accents, CJK) are
+      // caught here instead of only after a round trip to the server.
+      if (new TextEncoder().encode(coinbaseTag).length > 86) {
+        setMinerAddressMsg('Coinbase tag is too long (max 86 bytes — multi-byte characters count for more than 1).', 'error');
         return;
       }
 
