@@ -1,0 +1,64 @@
+version: "3.7"
+
+services:
+
+  app_proxy:
+    environment:
+      APP_HOST: toalt23-zec-mining-pool_web_1
+      APP_PORT: 3000
+
+  web:
+    image: toalt23/zec-mining-pool-web:latest
+    # No `user:` override here on purpose — the image's entrypoint needs to
+    # start as root to fix ownership on the pool-config bind mount (it's
+    # root-owned on first install, before the container ever runs), then
+    # drops to the unprivileged `node` user itself before running the app.
+    # See docker-entrypoint.sh / the Dockerfile for the actual privilege drop.
+    init: true
+    environment:
+      ZEBRA_RPC_HOST: toalt23-zec-mining-pool_zakura_1
+      ZEBRA_RPC_PORT: "8232"
+      POOL_STRATUM_PORT: "3333"
+      POOL_CONFIG_DIR: /data/pool-config
+      # POOL_SHARE_DIFFICULTY_PRESET: medium  # low (24) | medium (128) | high (256) — default share difficulty; per-worker override via the stratum password field
+      # POOL_LONGPOLL_TIMEOUT_MS: "90000" # how long the long-poll RPC call is allowed to block per round
+      ZAKURA_CONTAINER_NAME: toalt23-zec-mining-pool_zakura_1
+    ports:
+      - "3333:3333"
+    volumes:
+      - ${APP_DATA_DIR}/pool-config:/data/pool-config
+      # Lets DockerControlService restart the zakura container after a
+      # mining-address change, without restarting this app itself — see
+      # docker-entrypoint.sh for how the unprivileged app user still gets
+      # access to it, and docker-control.service.ts for the security note
+      # on what mounting this actually grants.
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: on-failure
+    depends_on:
+      - zakura
+
+  zakura:
+    image: zakuracore/zakura:latest
+    init: true
+    cpus: "3.0"
+    environment:
+      ZAKURA_RPC__LISTEN_ADDR: "0.0.0.0:8232"
+      ZAKURA_RPC__ENABLE_COOKIE_AUTH: "false"
+      ZAKURA_SYNC__PARALLEL_CPU_THREADS: "3"
+    # Required for solo mining: the coinbase output of every block template
+    # getblocktemplate hands us pays out to this address. Every stratum
+    # worker mines to the SAME address — it's set here, not chosen per
+    # worker, via the "Mining Address" field in the web UI's Miner tab
+    # (PoolConfigService writes ZAKURA_MINING__MINER_ADDRESS, and optionally
+    # ZAKURA_MINING__EXTRA_COINBASE_DATA for the "coinbase tag" field, into
+    # this file).
+    # `required: false` so first install works before any address is set —
+    # needs a reasonably current `docker compose` (Compose Spec, not just
+    # the legacy 3.7 schema); verify with `docker compose version` if this
+    # errors on your host.
+    env_file:
+      - path: ${APP_DATA_DIR}/pool-config/zakura.env
+        required: false
+    volumes:
+      - ${APP_DATA_DIR}/zakura-cache:/home/zebra/.cache/zakura
+    restart: on-failure

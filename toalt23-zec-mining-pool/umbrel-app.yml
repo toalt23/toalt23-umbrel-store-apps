@@ -1,0 +1,30 @@
+manifestVersion: 1
+id: toalt23-zec-mining-pool
+name: ZEC Mining Node
+tagline: ZEC Mining Pool with Zakura full node
+icon: https://raw.githubusercontent.com/toalt23/toalt23-umbrel-store-apps/master/toalt23-zec-mining-pool/icon.svg
+category: Development
+version: "1.11.5"
+port: 3000
+description: >-
+ ZEC Mining Node provides solo-mining directly to your own Node.
+developer: toalt23
+website: https://github.com/toalt23/toalt23-umbrel-store-apps
+submitter: toalt23
+submission: https://github.com/toalt23/toalt23-umbrel-store-apps
+repo: https://github.com/toalt23/toalt23-umbrel-store-apps
+support: https://github.com/toalt23/toalt23-umbrel-store-apps/issues
+gallery:
+  - https://i.imgur.com/yyVG0Jb.jpeg
+  - https://i.imgur.com/yyVG0Jb.jpeg
+  - https://i.imgur.com/yyVG0Jb.jpeg
+releaseNotes: >-
+  Chart range buttons and axis labels slightly bigger. Proper touch
+  support for the hashrate chart's hover tooltip: bigger tap target,
+  taps no longer fight with page scrolling, and the tooltip reliably
+  dismisses itself after lifting your finger instead of only on mouse
+  hover-out.
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
