@@ -19,6 +19,7 @@ gewohnt installieren und aktualisieren.
 | App | ID | Beschreibung |
 |---|---|---|
 | **ZEC Mining Node** | `toalt23-zec-mining-pool` | Solo-Mining direkt gegen den eigenen Zcash-Node — Zakura Full Node, ZIP-301 Stratum-Server und Web-UI für Mining-Adresse, Share-Difficulty und Worker-Übersicht. Stratum auf Port `3333`, Web-UI auf Port `3000`. |
+| **Dash Mining Node** | `toalt23-dash-mining-pool` | Solo-Mining direkt gegen den eigenen Dash-Node — in Entwicklung, aktuell nur eine Testversion. Web-UI auf Port `3410`. |
 
 ## Aufbau
 
