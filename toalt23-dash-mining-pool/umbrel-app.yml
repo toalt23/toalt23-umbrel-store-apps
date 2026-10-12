@@ -2,18 +2,18 @@ manifestVersion: 1
 id: toalt23-dash-mining-pool
 name: Dash Mining Node
 tagline: Dash Mining Pool with Dash Core full node
-icon: https://raw.githubusercontent.com/toalt23/toalt23-umbrel-store-apps/master/toalt23-dash-mining-pool/icon.svg
+icon: https://raw.githubusercontent.com/toalt23/umbrel-store-apps/master/toalt23-dash-mining-pool/icon.svg
 category: Development
 version: "0.0.1"
 port: 3410
 description: >-
  Dash Mining Node provides solo-mining directly to your own node.
 developer: toalt23
-website: https://github.com/toalt23/toalt23-umbrel-store-apps
+website: https://github.com/toalt23/umbrel-store-apps
 submitter: toalt23
-submission: https://github.com/toalt23/toalt23-umbrel-store-apps
-repo: https://github.com/toalt23/toalt23-umbrel-store-apps
-support: https://github.com/toalt23/toalt23-umbrel-store-apps/issues
+submission: https://github.com/toalt23/umbrel-store-apps
+repo: https://github.com/toalt23/umbrel-store-apps
+support: https://github.com/toalt23/umbrel-store-apps/issues
 gallery: []
 releaseNotes: >-
   First test version: Hello World only.

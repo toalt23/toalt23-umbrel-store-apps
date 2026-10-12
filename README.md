@@ -8,7 +8,7 @@ meine eigenen Apps — unabhängig vom offiziellen Umbrel App Store.
 In umbrelOS unter *App Store → ⋯ → Community App Store* diese URL hinzufügen:
 
 ```
-https://github.com/toalt23/toalt23-umbrel-store-apps
+https://github.com/toalt23/umbrel-store-apps
 ```
 
 Danach erscheinen alle unten gelisteten Apps im Store und lassen sich wie
