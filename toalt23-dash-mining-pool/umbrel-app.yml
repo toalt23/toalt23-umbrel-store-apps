@@ -4,7 +4,7 @@ name: Dash Mining Node
 tagline: Dash Mining Pool with Dash Core full node
 icon: https://raw.githubusercontent.com/toalt23/umbrel-store-apps/master/toalt23-dash-mining-pool/icon.svg
 category: Development
-version: "0.0.1"
+version: "0.1.0"
 port: 3410
 description: >-
  Dash Mining Node provides solo-mining directly to your own node.
@@ -16,7 +16,10 @@ repo: https://github.com/toalt23/umbrel-store-apps
 support: https://github.com/toalt23/umbrel-store-apps/issues
 gallery: []
 releaseNotes: >-
-  First test version: Hello World only.
+  Adds the Dash Core full node (v23.1.8, mainnet) and a sync screen showing
+  progress, sync phases incl. masternode sync, speed, time left, peers and disk
+  usage. Pool, Settings and Help are placeholders for now. The first sync
+  downloads about 43 GB and can take a day or more.
 dependencies: []
 path: ""
 defaultUsername: ""

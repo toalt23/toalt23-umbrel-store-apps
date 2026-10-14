@@ -11,3 +11,29 @@ services:
     image: toalt23/dash-mining-pool-web:latest
     init: true
     restart: on-failure
+    environment:
+      DASHD_RPC_HOST: toalt23-dash-mining-pool_dashd_1
+      DASHD_RPC_PORT: "9998"
+      DASHD_RPC_USER: dashrpc
+      DASHD_RPC_PASSWORD: ${APP_PASSWORD}
+    depends_on:
+      - dashd
+
+  dashd:
+    image: dashpay/dashd:23.1.8
+    init: true
+    restart: on-failure
+    # dashd needs time to flush its databases on shutdown
+    stop_grace_period: 2m
+    command:
+      - dashd
+      - -printtoconsole
+      - -server=1
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=0.0.0.0/0
+      - -rpcuser=dashrpc
+      - -rpcpassword=${APP_PASSWORD}
+      - -dbcache=1024
+    volumes:
+      # Umbrel creates this from data/dashcore/.gitkeep, so it's owned by uid 1000 (= dash)
+      - ${APP_DATA_DIR}/data/dashcore:/home/dash/.dashcore
